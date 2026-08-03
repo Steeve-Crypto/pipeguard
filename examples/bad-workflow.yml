@@ -1,0 +1,37 @@
+name: Dangerous Example Pipeline
+
+on:
+  pull_request_target:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions: write-all
+
+jobs:
+  build:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup
+        uses: actions/setup-node@v3
+
+      - name: Build and leak
+        env:
+          AWS_ACCESS_KEY_ID: AKIAIOSFODNN7EXAMPLE
+          AWS_SECRET_ACCESS_KEY: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+          GH_TOKEN: ghp_abcdefghijklmnopqrstuvwxyz0123456789
+        run: |
+          echo "Token is ${{ secrets.MY_SECRET }}"
+          echo $AWS_ACCESS_KEY_ID
+          npm install
+          npm run build
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: some-org/deploy-action@main
+        with:
+          password: "SuperSecretPassword123!"
