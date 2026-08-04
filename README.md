@@ -16,96 +16,71 @@ Detects:
 
 | Rule ID                | Severity   | Description                                      |
 |------------------------|------------|--------------------------------------------------|
-| `unpinned-action`      | High       | Actions pinned to tags (`@v1`, `@main`) instead of SHAs |
+| `unpinned-action`      | High       | Actions pinned to tags/branches instead of SHAs  |
 | `permissions-write-all`| High       | `permissions: write-all`                         |
 | `pull-request-target`  | Critical   | Dangerous `pull_request_target` trigger          |
 | `self-hosted-runner`   | Medium     | Use of self-hosted runners                       |
 | `secret-in-logs`       | High       | Secrets being echoed                             |
+| `script-injection`     | High       | Untrusted `github.event` data used in `run:`     |
 | `aws-access-key`       | Critical   | Hardcoded AWS Access Key                         |
 | `github-pat`           | Critical   | GitHub Personal Access Tokens                    |
 | `private-key`          | Critical   | Private key blocks                               |
 | `generic-secret`       | High       | Hardcoded passwords / API keys                   |
 
 ### Converter
-Cleanly convert configuration files between:
-- YAML
+Cleanly convert configuration files between YAML, JSON, and TOML.
+
+### Output formats
+- Human-readable (colored)
 - JSON
-- TOML
+- SARIF (for GitHub Code Scanning)
 
 ## Installation
 
 ```bash
-# From source
 git clone https://github.com/Steeve-Crypto/pipeguard.git
 cd pipeguard
 cargo install --path .
-
-# Or just build
-cargo build --release
 ```
 
 ## Usage
 
-### Scan a workflow or directory
+### Scan
 
 ```bash
 # Scan a single file
 pipeguard scan examples/bad-workflow.yml
 
-# Scan all workflows in a repo
+# Scan all workflows
 pipeguard scan .github/workflows/
 
-# Only show High and Critical
+# Only High + Critical
 pipeguard scan .github/workflows --min-severity high
 
-# Machine-readable output
+# JSON output
 pipeguard scan .github/workflows --json
+
+# SARIF output (GitHub Code Scanning)
+pipeguard scan .github/workflows --sarif > results.sarif
 ```
 
-### Convert formats
+### Convert
 
 ```bash
-# YAML → JSON
 pipeguard convert config.yaml --to json
-
-# JSON → TOML
 pipeguard convert data.json --to toml -o data.toml
-
-# TOML → YAML
 pipeguard convert Cargo.toml --to yaml
 ```
 
-## Example Output
+## Example
 
-```
-⚠ 8 finding(s) found
-
-CRITICAL [pull-request-target] Dangerous trigger: pull_request_target
-   File : examples/bad-workflow.yml
-   Line : 4
-   Code : pull_request_target:
-   `pull_request_target` runs in the context of the base repository...
-
-HIGH [unpinned-action] Unpinned GitHub Action
-   File : examples/bad-workflow.yml
-   Line : 18
-   Code : - uses: actions/checkout@v4
-   ...
+```bash
+$ pipeguard scan examples/bad-workflow.yml
 ```
 
 ## Why this exists
 
-Modern software delivery heavily relies on CI/CD. Misconfigured pipelines are one of the highest-ROI targets for attackers (and a frequent source of real breaches). 
-
-`pipeguard` gives you a fast, offline, dependency-light way to audit pipeline configurations during security assessments or while hardening your own projects.
-
-## Roadmap
-
-- [ ] More precise GitHub Actions permission analysis
-- [ ] GitLab CI specific rules
-- [ ] SARIF output for GitHub Code Scanning integration
-- [ ] Custom rule support
-- [ ] Secrets entropy analysis
+Misconfigured CI/CD pipelines are a high-ROI target. `pipeguard` gives you a fast, offline way to audit them during assessments or while hardening your own projects.
 
 ## License
 
