@@ -14,18 +14,21 @@ Built for practical use during recon, code review, and securing your own pipelin
 ### Scanner
 Detects:
 
-| Rule ID                | Severity   | Description                                      |
-|------------------------|------------|--------------------------------------------------|
-| `unpinned-action`      | High       | Actions pinned to tags/branches instead of SHAs  |
-| `permissions-write-all`| High       | `permissions: write-all`                         |
-| `pull-request-target`  | Critical   | Dangerous `pull_request_target` trigger          |
-| `self-hosted-runner`   | Medium     | Use of self-hosted runners                       |
-| `secret-in-logs`       | High       | Secrets being echoed                             |
-| `script-injection`     | High       | Untrusted `github.event` data used in `run:`     |
-| `aws-access-key`       | Critical   | Hardcoded AWS Access Key                         |
-| `github-pat`           | Critical   | GitHub Personal Access Tokens                    |
-| `private-key`          | Critical   | Private key blocks                               |
-| `generic-secret`       | High       | Hardcoded passwords / API keys                   |
+| Rule ID                      | Severity   | Description                                           |
+|------------------------------|------------|-------------------------------------------------------|
+| `unpinned-action`            | High       | Actions pinned to tags/branches instead of SHAs       |
+| `permissions-write-all`      | High       | `permissions: write-all`                              |
+| `excessive-write-permissions`| Medium     | Too many individual write scopes                      |
+| `dangerous-permission-combo` | High       | `contents: write` + `id-token: write`                 |
+| `pull-request-target`        | Critical   | Dangerous `pull_request_target` trigger               |
+| `self-hosted-runner`         | Medium     | Use of self-hosted runners                            |
+| `secret-in-logs`             | High       | Secrets being echoed                                  |
+| `script-injection`           | High       | Untrusted `github.event` data used in `run:`          |
+| `aws-access-key`             | Critical   | Hardcoded AWS Access Key                              |
+| `github-pat`                 | Critical   | GitHub Personal Access Tokens                         |
+| `private-key`                | Critical   | Private key blocks                                    |
+| `generic-secret`             | High       | Hardcoded passwords / API keys                        |
+| `high-entropy-secret`        | Medium     | High Shannon entropy string (possible unknown secret) |
 
 ### Converter
 Cleanly convert configuration files between YAML, JSON, and TOML.
