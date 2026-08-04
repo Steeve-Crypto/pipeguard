@@ -1,5 +1,6 @@
 use colored::*;
 use serde::Serialize;
+use serde_json::json;
 
 use crate::scanner::Finding;
 use crate::Severity;
@@ -15,11 +16,21 @@ struct JsonFinding {
     snippet: Option<String>,
 }
 
-pub fn print_findings(findings: &[Finding], as_json: bool, min_severity: Severity) {
+pub fn print_findings(
+    findings: &[Finding],
+    as_json: bool,
+    as_sarif: bool,
+    min_severity: Severity,
+) {
     let filtered: Vec<&Finding> = findings
         .iter()
         .filter(|f| f.severity >= min_severity)
         .collect();
+
+    if as_sarif {
+        print_sarif(&filtered);
+        return;
+    }
 
     if as_json {
         let json_findings: Vec<JsonFinding> = filtered
@@ -39,7 +50,12 @@ pub fn print_findings(findings: &[Finding], as_json: bool, min_severity: Severit
     }
 
     if filtered.is_empty() {
-        println!("{}", "✓ No issues found (above the minimum severity)".green().bold());
+        println!(
+            "{}",
+            "✓ No issues found (above the minimum severity)"
+                .green()
+                .bold()
+        );
         return;
     }
 
@@ -68,4 +84,72 @@ pub fn print_findings(findings: &[Finding], as_json: bool, min_severity: Severit
         println!("   {}", f.description);
         println!();
     }
+}
+
+fn severity_to_sarif_level(sev: &Severity) -> &'static str {
+    match sev {
+        Severity::Critical | Severity::High => "error",
+        Severity::Medium => "warning",
+        Severity::Low => "note",
+    }
+}
+
+fn print_sarif(findings: &[&Finding]) {
+    let mut results = Vec::new();
+    let mut rules_map = std::collections::HashMap::new();
+
+    for f in findings {
+        rules_map
+            .entry(f.rule_id.clone())
+            .or_insert_with(|| json!({
+                "id": f.rule_id,
+                "name": f.title,
+                "shortDescription": { "text": f.title },
+                "fullDescription": { "text": f.description },
+                "defaultConfiguration": {
+                    "level": severity_to_sarif_level(&f.severity)
+                }
+            }));
+
+        let mut result = json!({
+            "ruleId": f.rule_id,
+            "level": severity_to_sarif_level(&f.severity),
+            "message": { "text": f.description },
+            "locations": [{
+                "physicalLocation": {
+                    "artifactLocation": {
+                        "uri": f.file.display().to_string()
+                    }
+                }
+            }]
+        });
+
+        if let Some(line) = f.line {
+            result["locations"][0]["physicalLocation"]["region"] = json!({
+                "startLine": line
+            });
+        }
+
+        results.push(result);
+    }
+
+    let rules: Vec<_> = rules_map.into_values().collect();
+
+    let sarif = json!({
+        "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+        "version": "2.1.0",
+        "runs": [{
+            "tool": {
+                "driver": {
+                    "name": "pipeguard",
+                    "informationUri": "https://github.com/Steeve-Crypto/pipeguard",
+                    "version": "0.1.0",
+                    "rules": rules
+                }
+            },
+            "results": results
+        }]
+    });
+
+    println!("{}", serde_json::to_string_pretty(&sarif).unwrap());
 }
