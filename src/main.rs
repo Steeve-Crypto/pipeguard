@@ -43,6 +43,10 @@ enum Commands {
         #[arg(long)]
         json: bool,
 
+        /// Output findings as SARIF (for GitHub Code Scanning)
+        #[arg(long)]
+        sarif: bool,
+
         /// Only show findings of this severity or higher
         #[arg(long, value_enum, default_value = "low")]
         min_severity: Severity,
@@ -74,10 +78,11 @@ fn main() -> Result<()> {
         Commands::Scan {
             path,
             json,
+            sarif,
             min_severity,
         } => {
             let findings = scanner::scan(&path).context("scan failed")?;
-            report::print_findings(&findings, json, min_severity);
+            report::print_findings(&findings, json, sarif, min_severity);
         }
     }
 
