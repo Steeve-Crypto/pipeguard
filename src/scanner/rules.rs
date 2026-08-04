@@ -16,32 +16,35 @@ pub struct RuleFinding {
     pub snippet: Option<String>,
 }
 
+// Detects uses: owner/repo@tag where tag is not a full 40-char SHA
 static UNPINNED_ACTION: Lazy<Regex> = Lazy::new(|| {
-    // matches: uses: owner/action@v1  or @main  or @master  (no full SHA)
-    Regex::new(r#"(?i)uses:\s*['\"]?[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@(v?\d|main|master|latest)"#).unwrap()
+    Regex::new(
+        r#"(?i)uses:\s*['\"]?([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)@([A-Za-z0-9._/-]+)"#,
+    )
+    .unwrap()
 });
 
-static WRITE_ALL: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"(?i)permissions:\s*write-all"#).unwrap()
-});
+static WRITE_ALL: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"(?i)permissions:\s*write-all"#).unwrap());
 
-static PULL_REQUEST_TARGET: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"(?i)pull_request_target"#).unwrap()
-});
+static PULL_REQUEST_TARGET: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"(?i)pull_request_target"#).unwrap());
 
-static SELF_HOSTED: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"(?i)runs-on:\s*.*self-hosted"#).unwrap()
-});
+static SELF_HOSTED: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"(?i)runs-on:\s*.*self-hosted"#).unwrap());
 
 static ECHO_SECRET: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"(?i)(echo|print|printf|puts).*(\$\{\{\s*secrets\.|SECRET|PASSWORD|TOKEN|API_KEY)"#).unwrap()
+    Regex::new(
+        r#"(?i)(echo|print|printf|puts).*(\$\{\{\s*secrets\.|SECRET|PASSWORD|TOKEN|API_KEY)"#,
+    )
+    .unwrap()
 });
 
-static BROAD_PERMISSIONS: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"(?i)permissions:\s*\n(\s+\w+:\s*write\s*\n)+"#).unwrap()
+static SCRIPT_INJECTION: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"(?i)run:.*\$\{\{\s*github\.event\.(pull_request|issue|comment|head_ref)"#).unwrap()
 });
 
-pub fn scan_rules(path: &Path, content: &str, lines: &[&str]) -> Vec<Finding> {
+pub fn scan_rules(path: &Path, _content: &str, lines: &[&str]) -> Vec<Finding> {
     let mut findings = Vec::new();
 
     for (idx, line) in lines.iter().enumerate() {
@@ -50,20 +53,27 @@ pub fn scan_rules(path: &Path, content: &str, lines: &[&str]) -> Vec<Finding> {
             continue;
         }
 
-        // Unpinned actions
-        if UNPINNED_ACTION.is_match(line) {
-            findings.push(Finding {
-                file: path.to_path_buf(),
-                rule_id: "unpinned-action".into(),
-                title: "Unpinned GitHub Action".into(),
-                description: "Action is referenced by a mutable tag (v1, main, etc.) instead of a full commit SHA. This allows supply-chain attacks if the tag is moved.".into(),
-                severity: Severity::High,
-                line: Some(idx + 1),
-                snippet: Some(trimmed.chars().take(100).collect()),
-            });
+        // Unpinned actions — only flag if the ref is not a full SHA
+        if let Some(caps) = UNPINNED_ACTION.captures(line) {
+            let ref_name = caps.get(2).map(|m| m.as_str()).unwrap_or("");
+            // Full commit SHAs are 40 hex characters
+            let is_sha = ref_name.len() == 40 && ref_name.chars().all(|c| c.is_ascii_hexdigit());
+            if !is_sha {
+                findings.push(Finding {
+                    file: path.to_path_buf(),
+                    rule_id: "unpinned-action".into(),
+                    title: "Unpinned GitHub Action".into(),
+                    description: format!(
+                        "Action is referenced by mutable ref `{}` instead of a full commit SHA. This enables supply-chain attacks if the tag/branch is moved.",
+                        ref_name
+                    ),
+                    severity: Severity::High,
+                    line: Some(idx + 1),
+                    snippet: Some(trimmed.chars().take(100).collect()),
+                });
+            }
         }
 
-        // permissions: write-all
         if WRITE_ALL.is_match(line) {
             findings.push(Finding {
                 file: path.to_path_buf(),
@@ -76,7 +86,6 @@ pub fn scan_rules(path: &Path, content: &str, lines: &[&str]) -> Vec<Finding> {
             });
         }
 
-        // pull_request_target
         if PULL_REQUEST_TARGET.is_match(line) {
             findings.push(Finding {
                 file: path.to_path_buf(),
@@ -89,7 +98,6 @@ pub fn scan_rules(path: &Path, content: &str, lines: &[&str]) -> Vec<Finding> {
             });
         }
 
-        // self-hosted runners
         if SELF_HOSTED.is_match(line) {
             findings.push(Finding {
                 file: path.to_path_buf(),
@@ -102,7 +110,6 @@ pub fn scan_rules(path: &Path, content: &str, lines: &[&str]) -> Vec<Finding> {
             });
         }
 
-        // Echoing secrets
         if ECHO_SECRET.is_match(line) {
             findings.push(Finding {
                 file: path.to_path_buf(),
@@ -114,10 +121,19 @@ pub fn scan_rules(path: &Path, content: &str, lines: &[&str]) -> Vec<Finding> {
                 snippet: Some(trimmed.chars().take(100).collect()),
             });
         }
-    }
 
-    // Multi-line style checks can be added later (e.g. many write permissions)
-    let _ = (content, BROAD_PERMISSIONS); // silence unused for now
+        if SCRIPT_INJECTION.is_match(line) {
+            findings.push(Finding {
+                file: path.to_path_buf(),
+                rule_id: "script-injection".into(),
+                title: "Potential script injection via github.event".into(),
+                description: "Using untrusted github.event data (PR title, body, head_ref, etc.) directly in a run: step can lead to script injection.".into(),
+                severity: Severity::High,
+                line: Some(idx + 1),
+                snippet: Some(trimmed.chars().take(120).collect()),
+            });
+        }
+    }
 
     findings
 }
