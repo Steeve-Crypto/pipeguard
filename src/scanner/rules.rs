@@ -18,10 +18,8 @@ pub struct RuleFinding {
 
 // Detects uses: owner/repo@tag where tag is not a full 40-char SHA
 static UNPINNED_ACTION: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(
-        r#"(?i)uses:\s*['\"]?([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)@([A-Za-z0-9._/-]+)"#,
-    )
-    .unwrap()
+    Regex::new(r#"(?i)uses:\s*['\"]?([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)@([A-Za-z0-9._/-]+)"#)
+        .unwrap()
 });
 
 static WRITE_ALL: Lazy<Regex> =
@@ -41,11 +39,32 @@ static ECHO_SECRET: Lazy<Regex> = Lazy::new(|| {
 });
 
 static SCRIPT_INJECTION: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"(?i)run:.*\$\{\{\s*github\.event\.(pull_request|issue|comment|head_ref)"#).unwrap()
+    Regex::new(
+        r#"(?i)run:.*\$\{\{\s*github\.event\.(pull_request|issue|comment|head_ref)"#,
+    )
+    .unwrap()
 });
 
-pub fn scan_rules(path: &Path, _content: &str, lines: &[&str]) -> Vec<Finding> {
+// Individual dangerous write permissions
+static PERM_WRITE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r#"(?i)^\s*(contents|actions|packages|deployments|security-events|id-token|attestations):\s*write"#,
+    )
+    .unwrap()
+});
+
+static PERM_CONTENTS_WRITE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"(?i)^\s*contents:\s*write"#).unwrap());
+
+static PERM_ID_TOKEN: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"(?i)^\s*id-token:\s*write"#).unwrap());
+
+pub fn scan_rules(path: &Path, content: &str, lines: &[&str]) -> Vec<Finding> {
     let mut findings = Vec::new();
+    let mut write_perm_count = 0;
+    let mut has_contents_write = false;
+    let mut has_id_token_write = false;
+    let mut first_write_line = None;
 
     for (idx, line) in lines.iter().enumerate() {
         let trimmed = line.trim();
@@ -56,7 +75,6 @@ pub fn scan_rules(path: &Path, _content: &str, lines: &[&str]) -> Vec<Finding> {
         // Unpinned actions — only flag if the ref is not a full SHA
         if let Some(caps) = UNPINNED_ACTION.captures(line) {
             let ref_name = caps.get(2).map(|m| m.as_str()).unwrap_or("");
-            // Full commit SHAs are 40 hex characters
             let is_sha = ref_name.len() == 40 && ref_name.chars().all(|c| c.is_ascii_hexdigit());
             if !is_sha {
                 findings.push(Finding {
@@ -84,6 +102,20 @@ pub fn scan_rules(path: &Path, _content: &str, lines: &[&str]) -> Vec<Finding> {
                 line: Some(idx + 1),
                 snippet: Some(trimmed.to_string()),
             });
+        }
+
+        // Track individual write permissions for better analysis
+        if PERM_WRITE.is_match(line) {
+            write_perm_count += 1;
+            if first_write_line.is_none() {
+                first_write_line = Some(idx + 1);
+            }
+        }
+        if PERM_CONTENTS_WRITE.is_match(line) {
+            has_contents_write = true;
+        }
+        if PERM_ID_TOKEN.is_match(line) {
+            has_id_token_write = true;
         }
 
         if PULL_REQUEST_TARGET.is_match(line) {
@@ -134,6 +166,37 @@ pub fn scan_rules(path: &Path, _content: &str, lines: &[&str]) -> Vec<Finding> {
             });
         }
     }
+
+    // Post-scan permission analysis
+    if write_perm_count >= 3 {
+        findings.push(Finding {
+            file: path.to_path_buf(),
+            rule_id: "excessive-write-permissions".into(),
+            title: "Excessive write permissions".into(),
+            description: format!(
+                "Workflow grants write access to {} different scopes. Consider reducing to least privilege.",
+                write_perm_count
+            ),
+            severity: Severity::Medium,
+            line: first_write_line,
+            snippet: None,
+        });
+    }
+
+    // contents: write + id-token: write is a common dangerous combo for token abuse
+    if has_contents_write && has_id_token_write {
+        findings.push(Finding {
+            file: path.to_path_buf(),
+            rule_id: "dangerous-permission-combo".into(),
+            title: "Dangerous permission combination".into(),
+            description: "`contents: write` combined with `id-token: write` can enable privilege escalation or artifact poisoning attacks.".into(),
+            severity: Severity::High,
+            line: first_write_line,
+            snippet: None,
+        });
+    }
+
+    let _ = content; // reserved for future multi-line block parsing
 
     findings
 }
