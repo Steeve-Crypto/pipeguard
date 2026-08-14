@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 120" width="480" height="120">
+  <rect width="480" height="120" fill="#0a0a0c"/>
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#22d3ee"/>
+      <stop offset="100%" stop-color="#f59e0b"/>
+    </linearGradient>
+  </defs>
+  <path d="M50 20 L90 20 L100 35 L100 70 L70 95 L40 70 L40 35 Z" fill="none" stroke="url(#g)" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M55 45 Q70 45 70 55 Q70 70 85 70" fill="none" stroke="url(#g)" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="55" cy="45" r="4" fill="#22d3ee"/>
+  <path d="M85 66 L92 70 L85 74" fill="none" stroke="#f59e0b" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="120" y="72" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="42" font-weight="600" fill="#ffffff">pipeguard</text>
+</svg>
