@@ -38,6 +38,31 @@ Cleanly convert configuration files between YAML, JSON, and TOML.
 - JSON
 - SARIF (for GitHub Code Scanning)
 
+### Observability (Tracing / Logs / Metrics)
+pipeguard is instrumented with the `tracing` ecosystem:
+
+**Spans**
+- `scan.start` → `scan_file` → `entropy.analyze` → `rule.evaluate` → `report.generate`
+- `convert`
+
+**Structured events**
+- `finding.detected` (rule_id, severity, line, title)
+- `scan metrics` (files_scanned, findings_total, findings_critical/high/medium/low)
+
+**Control**
+```bash
+# Default compact human logs
+pipeguard scan examples/bad-workflow.yml
+
+# More verbose
+RUST_LOG=pipeguard=debug pipeguard scan examples/bad-workflow.yml
+
+# JSON logs (ready for collectors / Loki / ELK)
+PIPEGUARD_LOG_FORMAT=json RUST_LOG=pipeguard=info pipeguard scan examples/bad-workflow.yml
+```
+
+This maps directly to the OpenTelemetry-style system map (Tracing + Logging + Metrics-ready events). Full OTLP export can be layered on top later.
+
 ## Installation
 
 ```bash
