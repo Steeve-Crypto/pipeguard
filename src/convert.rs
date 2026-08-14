@@ -1,9 +1,11 @@
 use anyhow::{bail, Context, Result};
 use std::fs;
 use std::path::Path;
+use tracing::instrument;
 
 use crate::Format;
 
+#[instrument(skip(output), fields(input = %input.display(), to = ?to))]
 pub fn run(input: &Path, to: Format, output: Option<&Path>) -> Result<()> {
     let content = fs::read_to_string(input)
         .with_context(|| format!("failed to read input file: {}", input.display()))?;
