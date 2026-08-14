@@ -1,6 +1,10 @@
-# pipeguard
+<p align="center">
+  <img src="assets/logo.svg" alt="pipeguard" width="360"/>
+</p>
 
-**CI/CD Pipeline Security Scanner + Multi-format Config Converter**
+<p align="center">
+  <strong>CI/CD Pipeline Security Scanner + Multi-format Config Converter</strong>
+</p>
 
 `pipeguard` is a fast Rust CLI that helps security engineers and ethical hackers:
 
@@ -62,6 +66,13 @@ PIPEGUARD_LOG_FORMAT=json RUST_LOG=pipeguard=info pipeguard scan examples/bad-wo
 ```
 
 This maps directly to the OpenTelemetry-style system map (Tracing + Logging + Metrics-ready events). Full OTLP export can be layered on top later.
+
+## Brand assets
+
+See [`assets/`](assets/) for logo variants:
+
+- `logo.svg` — primary logo (icon + wordmark)
+- `logo-icon.svg` — icon only (avatar / favicon)
 
 ## Installation
 
