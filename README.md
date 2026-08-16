@@ -6,6 +6,10 @@
   <strong>CI/CD Pipeline Security Scanner + Multi-format Config Converter</strong>
 </p>
 
+<p align="center">
+  <a href="https://scorecard.dev/viewer/?uri=github.com/Steeve-Crypto/pipeguard"><img src="https://api.scorecard.dev/projects/github.com/Steeve-Crypto/pipeguard/badge" alt="OpenSSF Scorecard"/></a>
+</p>
+
 `pipeguard` is a fast Rust CLI that helps security engineers and ethical hackers:
 
 1. **Scan** GitHub Actions, GitLab CI, and other pipeline YAML files for common security issues
@@ -65,7 +69,14 @@ RUST_LOG=pipeguard=debug pipeguard scan examples/bad-workflow.yml
 PIPEGUARD_LOG_FORMAT=json RUST_LOG=pipeguard=info pipeguard scan examples/bad-workflow.yml
 ```
 
-This maps directly to the OpenTelemetry-style system map (Tracing + Logging + Metrics-ready events). Full OTLP export can be layered on top later.
+### OSSF Scorecard
+This repository runs [OpenSSF Scorecard](https://github.com/ossf/scorecard) on a schedule and on pushes to `main` (see `.github/workflows/scorecard.yml`).
+
+- Results go to **GitHub Code Scanning** (SARIF)
+- Results are published for the **Scorecard badge** above
+- Details: [`docs/scorecard.md`](docs/scorecard.md)
+
+**Scorecard** = repo-level security posture. **pipeguard** = CI/CD pipeline content risks. Use both.
 
 ## Brand assets
 
@@ -116,6 +127,10 @@ pipeguard convert Cargo.toml --to yaml
 ```bash
 $ pipeguard scan examples/bad-workflow.yml
 ```
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for how to report vulnerabilities.
 
 ## Why this exists
 
