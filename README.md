@@ -46,6 +46,24 @@ Cleanly convert configuration files between YAML, JSON, and TOML.
 - JSON
 - SARIF (for GitHub Code Scanning)
 
+### GitHub Action
+
+```yaml
+- uses: actions/checkout@v4
+- uses: Steeve-Crypto/pipeguard@main
+  with:
+    path: .github/workflows
+    min_severity: medium
+    sarif: pipeguard.sarif
+    fail_on_findings: "true"
+- uses: github/codeql-action/upload-sarif@v3
+  if: always()
+  with:
+    sarif_file: pipeguard.sarif
+```
+
+Full docs: [`docs/github-action.md`](docs/github-action.md)
+
 ### Observability (Tracing / Logs / Metrics)
 pipeguard is instrumented with the `tracing` ecosystem:
 
