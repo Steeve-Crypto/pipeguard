@@ -56,26 +56,35 @@ runs:
         PIPEGUARD_MIN: ${{ inputs.min_severity }}
         PIPEGUARD_SARIF: ${{ inputs.sarif }}
         PIPEGUARD_FAIL: ${{ inputs.fail_on_findings }}
+        # Keep machine-readable stdout clean
+        RUST_LOG: off
       run: |
         set -euo pipefail
-        ARGS=(scan "$PIPEGUARD_PATH" --min-severity "$PIPEGUARD_MIN")
-        if [[ -n "${PIPEGUARD_SARIF}" ]]; then
-          pipeguard "${ARGS[@]}" --sarif > "$PIPEGUARD_SARIF" || status=$?
-        else
-          pipeguard "${ARGS[@]}" || status=$?
-        fi
-        status=${status:-0}
-        # pipeguard currently exits 0 even with findings; enforce fail_on_findings via SARIF/JSON later
-        # For now: if binary missing, fail; findings are visible in logs/SARIF
+
         if [[ ! -x "$HOME/.local/bin/pipeguard" ]]; then
           echo "pipeguard binary not found" >&2
           exit 1
         fi
+
+        ARGS=(scan "$PIPEGUARD_PATH" --min-severity "$PIPEGUARD_MIN")
+
+        if [[ -n "${PIPEGUARD_SARIF}" ]]; then
+          pipeguard "${ARGS[@]}" --sarif > "$PIPEGUARD_SARIF"
+          # Validate SARIF is real JSON before uploaders choke on it
+          if ! python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$PIPEGUARD_SARIF" 2>/dev/null; then
+            echo "Invalid SARIF output written to $PIPEGUARD_SARIF" >&2
+            head -c 200 "$PIPEGUARD_SARIF" >&2 || true
+            exit 1
+          fi
+        else
+          pipeguard "${ARGS[@]}"
+        fi
+
         if [[ "$PIPEGUARD_FAIL" == "true" && -n "${PIPEGUARD_SARIF}" && -f "${PIPEGUARD_SARIF}" ]]; then
-          # Fail if SARIF contains results (simple heuristic)
-          if grep -q '"results":\s*\[\s*{' "$PIPEGUARD_SARIF" 2>/dev/null; then
-            echo "Findings reported (see SARIF / logs). Failing because fail_on_findings=true." >&2
+          # Fail if SARIF has any results
+          count=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(sum(len(r.get('results',[])) for r in d.get('runs',[])))" "$PIPEGUARD_SARIF")
+          if [[ "$count" -gt 0 ]]; then
+            echo "pipeguard: $count finding(s) reported (fail_on_findings=true)" >&2
             exit 1
           fi
         fi
-        exit 0

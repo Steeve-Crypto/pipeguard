@@ -18,15 +18,16 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Run pipeguard
-        uses: ./ 
+        uses: ./
         with:
           path: .github/workflows
           min_severity: medium
           sarif: pipeguard.sarif
+          # Self-scan should not fail the build on findings yet
           fail_on_findings: "false"
 
       - name: Upload SARIF
         if: always() && hashFiles('pipeguard.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: pipeguard.sarif

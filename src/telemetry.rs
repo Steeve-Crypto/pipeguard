@@ -2,9 +2,11 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 /// Initialize tracing subscriber.
 ///
-/// - Default: human-readable pretty logs
-/// - Set `RUST_LOG=pipeguard=debug` (or `info`, `trace`) to control verbosity
-/// - Set `PIPEGUARD_LOG_FORMAT=json` for structured JSON logs (good for collectors)
+/// Logs always go to **stderr** so stdout stays clean for `--json` / `--sarif`.
+///
+/// - Default filter: `pipeguard=info,warn`
+/// - Override with `RUST_LOG` (e.g. `RUST_LOG=pipeguard=debug` or `RUST_LOG=off`)
+/// - Set `PIPEGUARD_LOG_FORMAT=json` for structured JSON logs on stderr
 pub fn init() {
     let filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new("pipeguard=info,warn"));
@@ -16,13 +18,20 @@ pub fn init() {
     if json {
         tracing_subscriber::registry()
             .with(filter)
-            .with(fmt::layer().json().with_target(true).with_thread_ids(false))
+            .with(
+                fmt::layer()
+                    .json()
+                    .with_writer(std::io::stderr)
+                    .with_target(true)
+                    .with_thread_ids(false),
+            )
             .init();
     } else {
         tracing_subscriber::registry()
             .with(filter)
             .with(
                 fmt::layer()
+                    .with_writer(std::io::stderr)
                     .with_target(false)
                     .with_thread_ids(false)
                     .compact(),
