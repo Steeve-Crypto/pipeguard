@@ -1,0 +1,32 @@
+name: pipeguard self-scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Run pipeguard
+        uses: ./ 
+        with:
+          path: .github/workflows
+          min_severity: medium
+          sarif: pipeguard.sarif
+          fail_on_findings: "false"
+
+      - name: Upload SARIF
+        if: always() && hashFiles('pipeguard.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: pipeguard.sarif

@@ -1,0 +1,81 @@
+name: "pipeguard"
+description: "Scan CI/CD pipeline configs for security issues (secrets, unpinned actions, dangerous permissions, injection)"
+author: "Steeve-Crypto"
+
+branding:
+  icon: shield
+  color: blue
+
+inputs:
+  path:
+    description: "File or directory to scan (e.g. .github/workflows)"
+    required: false
+    default: ".github/workflows"
+  min_severity:
+    description: "Minimum severity to report: low | medium | high | critical"
+    required: false
+    default: "low"
+  sarif:
+    description: "Write SARIF results to this file path (empty = disabled)"
+    required: false
+    default: "pipeguard.sarif"
+  fail_on_findings:
+    description: "Fail the step if any findings meet min_severity"
+    required: false
+    default: "true"
+
+outputs:
+  sarif_path:
+    description: "Path to the SARIF file (if generated)"
+    value: ${{ inputs.sarif }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Cache cargo
+      uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: ${{ github.action_path }}
+
+    - name: Build pipeguard
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: cargo install --path . --locked --force --root "$HOME/.local"
+
+    - name: Add pipeguard to PATH
+      shell: bash
+      run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+    - name: Run pipeguard scan
+      shell: bash
+      env:
+        PIPEGUARD_PATH: ${{ inputs.path }}
+        PIPEGUARD_MIN: ${{ inputs.min_severity }}
+        PIPEGUARD_SARIF: ${{ inputs.sarif }}
+        PIPEGUARD_FAIL: ${{ inputs.fail_on_findings }}
+      run: |
+        set -euo pipefail
+        ARGS=(scan "$PIPEGUARD_PATH" --min-severity "$PIPEGUARD_MIN")
+        if [[ -n "${PIPEGUARD_SARIF}" ]]; then
+          pipeguard "${ARGS[@]}" --sarif > "$PIPEGUARD_SARIF" || status=$?
+        else
+          pipeguard "${ARGS[@]}" || status=$?
+        fi
+        status=${status:-0}
+        # pipeguard currently exits 0 even with findings; enforce fail_on_findings via SARIF/JSON later
+        # For now: if binary missing, fail; findings are visible in logs/SARIF
+        if [[ ! -x "$HOME/.local/bin/pipeguard" ]]; then
+          echo "pipeguard binary not found" >&2
+          exit 1
+        fi
+        if [[ "$PIPEGUARD_FAIL" == "true" && -n "${PIPEGUARD_SARIF}" && -f "${PIPEGUARD_SARIF}" ]]; then
+          # Fail if SARIF contains results (simple heuristic)
+          if grep -q '"results":\s*\[\s*{' "$PIPEGUARD_SARIF" 2>/dev/null; then
+            echo "Findings reported (see SARIF / logs). Failing because fail_on_findings=true." >&2
+            exit 1
+          fi
+        fi
+        exit 0
