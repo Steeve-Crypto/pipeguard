@@ -7,7 +7,10 @@
 </p>
 
 <p align="center">
+  <a href="https://crates.io/crates/pipeguard"><img src="https://img.shields.io/crates/v/pipeguard.svg" alt="crates.io"/></a>
+  <a href="https://github.com/Steeve-Crypto/pipeguard/releases"><img src="https://img.shields.io/github/v/release/Steeve-Crypto/pipeguard" alt="GitHub release"/></a>
   <a href="https://scorecard.dev/viewer/?uri=github.com/Steeve-Crypto/pipeguard"><img src="https://api.scorecard.dev/projects/github.com/Steeve-Crypto/pipeguard/badge" alt="OpenSSF Scorecard"/></a>
+  <a href="https://github.com/Steeve-Crypto/pipeguard/actions/workflows/pipeguard-self.yml"><img src="https://github.com/Steeve-Crypto/pipeguard/actions/workflows/pipeguard-self.yml/badge.svg" alt="self-scan"/></a>
 </p>
 
 `pipeguard` is a fast Rust CLI that helps security engineers and ethical hackers:
@@ -50,13 +53,13 @@ Cleanly convert configuration files between YAML, JSON, and TOML.
 
 ```yaml
 - uses: actions/checkout@v4
-- uses: Steeve-Crypto/pipeguard@main
+- uses: Steeve-Crypto/pipeguard@v0.1.0
   with:
     path: .github/workflows
     min_severity: medium
     sarif: pipeguard.sarif
     fail_on_findings: "true"
-- uses: github/codeql-action/upload-sarif@v3
+- uses: github/codeql-action/upload-sarif@v4
   if: always()
   with:
     sarif_file: pipeguard.sarif
@@ -104,6 +107,14 @@ See [`assets/`](assets/) for logo variants:
 - `logo-icon.svg` — icon only (avatar / favicon)
 
 ## Installation
+
+### From crates.io (recommended)
+
+```bash
+cargo install pipeguard
+```
+
+### From source
 
 ```bash
 git clone https://github.com/Steeve-Crypto/pipeguard.git
