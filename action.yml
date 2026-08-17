@@ -23,40 +23,47 @@ inputs:
     description: "Fail the step if any findings meet min_severity"
     required: false
     default: "true"
+  comment_pr:
+    description: "Post a summary comment on the pull request when findings exist"
+    required: false
+    default: "false"
+  token:
+    description: "GitHub token used for PR comments (defaults to github.token)"
+    required: false
+    default: ${{ github.token }}
 
 outputs:
   sarif_path:
     description: "Path to the SARIF file (if generated)"
     value: ${{ inputs.sarif }}
+  findings_count:
+    description: "Number of findings reported"
+    value: ${{ steps.scan.outputs.findings_count }}
 
 runs:
   using: composite
   steps:
-    - name: Install Rust toolchain
-      uses: dtolnay/rust-toolchain@stable
-
-    - name: Cache cargo
-      uses: Swatinem/rust-cache@v2
-      with:
-        workspaces: ${{ github.action_path }}
-
-    - name: Build pipeguard
+    - name: Install pipeguard
       shell: bash
-      working-directory: ${{ github.action_path }}
-      run: cargo install --path . --locked --force --root "$HOME/.local"
-
-    - name: Add pipeguard to PATH
-      shell: bash
-      run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      run: |
+        set -euo pipefail
+        # Prefer crates.io binary (fast). Fall back to source build if needed.
+        if cargo install pipeguard --version 0.1.0 --root "$HOME/.local" --force 2>/dev/null; then
+          echo "Installed pipeguard from crates.io"
+        else
+          echo "crates.io install failed, building from source..."
+          cargo install --path "${{ github.action_path }}" --locked --force --root "$HOME/.local"
+        fi
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
     - name: Run pipeguard scan
+      id: scan
       shell: bash
       env:
         PIPEGUARD_PATH: ${{ inputs.path }}
         PIPEGUARD_MIN: ${{ inputs.min_severity }}
         PIPEGUARD_SARIF: ${{ inputs.sarif }}
         PIPEGUARD_FAIL: ${{ inputs.fail_on_findings }}
-        # Keep machine-readable stdout clean
         RUST_LOG: off
       run: |
         set -euo pipefail
@@ -67,24 +74,44 @@ runs:
         fi
 
         ARGS=(scan "$PIPEGUARD_PATH" --min-severity "$PIPEGUARD_MIN")
+        FINDINGS=0
 
         if [[ -n "${PIPEGUARD_SARIF}" ]]; then
           pipeguard "${ARGS[@]}" --sarif > "$PIPEGUARD_SARIF"
-          # Validate SARIF is real JSON before uploaders choke on it
           if ! python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$PIPEGUARD_SARIF" 2>/dev/null; then
             echo "Invalid SARIF output written to $PIPEGUARD_SARIF" >&2
             head -c 200 "$PIPEGUARD_SARIF" >&2 || true
             exit 1
           fi
+          FINDINGS=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(sum(len(r.get('results',[])) for r in d.get('runs',[])))" "$PIPEGUARD_SARIF")
         else
-          pipeguard "${ARGS[@]}"
+          # Human output still goes to logs; capture count via JSON side channel
+          TMP=$(mktemp)
+          pipeguard "${ARGS[@]}" --json > "$TMP" || true
+          FINDINGS=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(len(d) if isinstance(d,list) else d.get('findings',0) if isinstance(d,dict) else 0)" "$TMP" 2>/dev/null || echo 0)
+          rm -f "$TMP"
+          pipeguard "${ARGS[@]}" || true
         fi
 
-        if [[ "$PIPEGUARD_FAIL" == "true" && -n "${PIPEGUARD_SARIF}" && -f "${PIPEGUARD_SARIF}" ]]; then
-          # Fail if SARIF has any results
-          count=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(sum(len(r.get('results',[])) for r in d.get('runs',[])))" "$PIPEGUARD_SARIF")
-          if [[ "$count" -gt 0 ]]; then
-            echo "pipeguard: $count finding(s) reported (fail_on_findings=true)" >&2
-            exit 1
-          fi
+        echo "findings_count=$FINDINGS" >> "$GITHUB_OUTPUT"
+        echo "pipeguard: $FINDINGS finding(s)"
+
+        if [[ "$PIPEGUARD_FAIL" == "true" && "$FINDINGS" -gt 0 ]]; then
+          echo "pipeguard: failing because findings were reported (fail_on_findings=true)" >&2
+          exit 1
         fi
+
+    - name: Comment on PR
+      if: ${{ inputs.comment_pr == 'true' && github.event_name == 'pull_request' && steps.scan.outputs.findings_count != '0' }}
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ inputs.token }}
+        script: |
+          const count = '${{ steps.scan.outputs.findings_count }}';
+          const body = `### pipeguard findings\n\nFound **${count}** potential CI/CD security issue(s).\n\nSee the job logs or the uploaded SARIF for details.`;
+          await github.rest.issues.createComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+            body
+          });
