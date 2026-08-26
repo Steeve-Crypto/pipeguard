@@ -35,6 +35,9 @@ Misconfigured CI/CD is one of the highest-ROI attack surfaces. Most teams still 
 | `excessive-write-permissions`| Medium     | Too many individual write scopes                      |
 | `dangerous-permission-combo` | High       | `contents: write` + `id-token: write`                 |
 | `pull-request-target`        | Critical   | Dangerous `pull_request_target` trigger               |
+| `pr-target-untrusted-checkout` | Critical | `pull_request_target` + checkout of PR head         |
+| `persist-credentials`        | Medium     | `actions/checkout` leaves GITHUB_TOKEN in workspace   |
+| `env-hardcoded-secret`       | High       | Literal secrets assigned in `env:`                    |
 | `self-hosted-runner`         | Medium     | Use of self-hosted runners                            |
 | `secret-in-logs`             | High       | Secrets being echoed                                  |
 | `script-injection`           | High       | Untrusted `github.event` data used in `run:`          |
@@ -60,6 +63,7 @@ Misconfigured CI/CD is one of the highest-ROI attack surfaces. Most teams still 
     min_severity: medium
     sarif: pipeguard.sarif
     fail_on_findings: "true"
+    comment_pr: "true"
 - uses: github/codeql-action/upload-sarif@v4
   if: always()
   with:
