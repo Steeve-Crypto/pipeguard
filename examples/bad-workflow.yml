@@ -13,6 +13,9 @@ jobs:
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: true
 
       - name: Setup
         uses: actions/setup-node@v3
@@ -22,11 +25,12 @@ jobs:
           AWS_ACCESS_KEY_ID: AKIAIOSFODNN7EXAMPLE
           AWS_SECRET_ACCESS_KEY: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
           GH_TOKEN: ghp_abcdefghijklmnopqrstuvwxyz0123456789
+          password: "SuperSecretPassword123!"
         run: |
           echo "Token is ${{ secrets.MY_SECRET }}"
           echo $AWS_ACCESS_KEY_ID
           npm install
-          npm run build
+          npm run build ${{ github.event.pull_request.title }}
 
   deploy:
     needs: build

@@ -16,7 +16,6 @@ pub struct RuleFinding {
     pub snippet: Option<String>,
 }
 
-// Detects uses: owner/repo@tag where tag is not a full 40-char SHA
 static UNPINNED_ACTION: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r#"(?i)uses:\s*['\"]?([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)@([A-Za-z0-9._/-]+)"#)
         .unwrap()
@@ -40,12 +39,11 @@ static ECHO_SECRET: Lazy<Regex> = Lazy::new(|| {
 
 static SCRIPT_INJECTION: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
-        r#"(?i)run:.*\$\{\{\s*github\.event\.(pull_request|issue|comment|head_ref)"#,
+        r#"(?i)run:.*\$\{\{\s*github\.event\.(pull_request|issue|comment|head_ref|discussion)"#,
     )
     .unwrap()
 });
 
-// Individual dangerous write permissions
 static PERM_WRITE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
         r#"(?i)^\s*(contents|actions|packages|deployments|security-events|id-token|attestations):\s*write"#,
@@ -59,12 +57,38 @@ static PERM_CONTENTS_WRITE: Lazy<Regex> =
 static PERM_ID_TOKEN: Lazy<Regex> =
     Lazy::new(|| Regex::new(r#"(?i)^\s*id-token:\s*write"#).unwrap());
 
+static CHECKOUT_ACTION: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"(?i)uses:\s*['\"]?actions/checkout@"#).unwrap());
+
+static PERSIST_CREDS: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"(?i)persist-credentials:\s*true"#).unwrap());
+
+static PR_HEAD_REF: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r#"(?i)ref:\s*.*\$\{\{\s*github\.event\.pull_request\.(head\.(sha|ref)|head_sha)"#,
+    )
+    .unwrap()
+});
+
+static ENV_LITERAL_SECRET: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r#"(?i)^\s*(password|secret|token|api[_-]?key|access[_-]?key|aws_secret_access_key|gh_token)\s*:\s*['\"][^'\"]{8,}['\"]"#,
+    )
+    .unwrap()
+});
+
 pub fn scan_rules(path: &Path, content: &str, lines: &[&str]) -> Vec<Finding> {
     let mut findings = Vec::new();
     let mut write_perm_count = 0;
     let mut has_contents_write = false;
     let mut has_id_token_write = false;
     let mut first_write_line = None;
+    let mut has_pr_target = false;
+    let mut pr_target_line = None;
+    let mut has_untrusted_checkout = false;
+    let mut untrusted_checkout_line = None;
+    let mut has_checkout = false;
+    let mut persist_creds_line = None;
 
     for (idx, line) in lines.iter().enumerate() {
         let trimmed = line.trim();
@@ -72,7 +96,6 @@ pub fn scan_rules(path: &Path, content: &str, lines: &[&str]) -> Vec<Finding> {
             continue;
         }
 
-        // Unpinned actions — only flag if the ref is not a full SHA
         if let Some(caps) = UNPINNED_ACTION.captures(line) {
             let ref_name = caps.get(2).map(|m| m.as_str()).unwrap_or("");
             let is_sha = ref_name.len() == 40 && ref_name.chars().all(|c| c.is_ascii_hexdigit());
@@ -104,7 +127,6 @@ pub fn scan_rules(path: &Path, content: &str, lines: &[&str]) -> Vec<Finding> {
             });
         }
 
-        // Track individual write permissions for better analysis
         if PERM_WRITE.is_match(line) {
             write_perm_count += 1;
             if first_write_line.is_none() {
@@ -119,6 +141,8 @@ pub fn scan_rules(path: &Path, content: &str, lines: &[&str]) -> Vec<Finding> {
         }
 
         if PULL_REQUEST_TARGET.is_match(line) {
+            has_pr_target = true;
+            pr_target_line = Some(idx + 1);
             findings.push(Finding {
                 file: path.to_path_buf(),
                 rule_id: "pull-request-target".into(),
@@ -165,9 +189,40 @@ pub fn scan_rules(path: &Path, content: &str, lines: &[&str]) -> Vec<Finding> {
                 snippet: Some(trimmed.chars().take(120).collect()),
             });
         }
+
+        if CHECKOUT_ACTION.is_match(line) {
+            has_checkout = true;
+        }
+        if PERSIST_CREDS.is_match(line) {
+            persist_creds_line = Some(idx + 1);
+            findings.push(Finding {
+                file: path.to_path_buf(),
+                rule_id: "persist-credentials".into(),
+                title: "Checkout persists credentials".into(),
+                description: "`persist-credentials: true` leaves the GITHUB_TOKEN in the workspace. Prefer `false` unless a later step must push with that token.".into(),
+                severity: Severity::Medium,
+                line: Some(idx + 1),
+                snippet: Some(trimmed.to_string()),
+            });
+        }
+        if PR_HEAD_REF.is_match(line) {
+            has_untrusted_checkout = true;
+            untrusted_checkout_line = Some(idx + 1);
+        }
+
+        if ENV_LITERAL_SECRET.is_match(line) {
+            findings.push(Finding {
+                file: path.to_path_buf(),
+                rule_id: "env-hardcoded-secret".into(),
+                title: "Hardcoded secret in env block".into(),
+                description: "A secret-looking value is assigned directly in `env:`. Use GitHub Secrets (`${{ secrets.* }}`) instead of literals.".into(),
+                severity: Severity::High,
+                line: Some(idx + 1),
+                snippet: Some(trimmed.chars().take(120).collect()),
+            });
+        }
     }
 
-    // Post-scan permission analysis
     if write_perm_count >= 3 {
         findings.push(Finding {
             file: path.to_path_buf(),
@@ -183,7 +238,6 @@ pub fn scan_rules(path: &Path, content: &str, lines: &[&str]) -> Vec<Finding> {
         });
     }
 
-    // contents: write + id-token: write is a common dangerous combo for token abuse
     if has_contents_write && has_id_token_write {
         findings.push(Finding {
             file: path.to_path_buf(),
@@ -196,7 +250,20 @@ pub fn scan_rules(path: &Path, content: &str, lines: &[&str]) -> Vec<Finding> {
         });
     }
 
-    let _ = content; // reserved for future multi-line block parsing
+    if has_pr_target && (has_untrusted_checkout || (has_checkout && content.contains("github.event.pull_request"))) {
+        findings.push(Finding {
+            file: path.to_path_buf(),
+            rule_id: "pr-target-untrusted-checkout".into(),
+            title: "pull_request_target checks out untrusted code".into(),
+            description: "`pull_request_target` plus checkout of the PR head runs attacker-controlled code with base-repo privileges and secrets.".into(),
+            severity: Severity::Critical,
+            line: untrusted_checkout_line.or(pr_target_line),
+            snippet: None,
+        });
+    }
+
+    let _ = persist_creds_line;
+    let _ = content;
 
     findings
 }
