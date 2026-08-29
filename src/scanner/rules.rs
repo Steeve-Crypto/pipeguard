@@ -39,7 +39,7 @@ static ECHO_SECRET: Lazy<Regex> = Lazy::new(|| {
 
 static SCRIPT_INJECTION: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
-        r#"(?i)run:.*\$\{\{\s*github\.event\.(pull_request|issue|comment|head_ref|discussion)"#,
+        r#"(?i)run:.*\$\{\{\s*github\.event\.(pull_request|issue|comment|head_ref|discussion|inputs)"#,
     )
     .unwrap()
 });
@@ -76,6 +76,13 @@ static ENV_LITERAL_SECRET: Lazy<Regex> = Lazy::new(|| {
     )
     .unwrap()
 });
+
+static CURL_PIPE_SHELL: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"(?i)(curl|wget).+\|\s*(sudo\s+)?(bash|sh|zsh)"#).unwrap()
+});
+
+static IMAGE_LATEST: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"(?i)^\s*(image|container):\s*.+:latest\b"#).unwrap());
 
 pub fn scan_rules(path: &Path, content: &str, lines: &[&str]) -> Vec<Finding> {
     let mut findings = Vec::new();
@@ -183,7 +190,7 @@ pub fn scan_rules(path: &Path, content: &str, lines: &[&str]) -> Vec<Finding> {
                 file: path.to_path_buf(),
                 rule_id: "script-injection".into(),
                 title: "Potential script injection via github.event".into(),
-                description: "Using untrusted github.event data (PR title, body, head_ref, etc.) directly in a run: step can lead to script injection.".into(),
+                description: "Using untrusted github.event data (PR title, body, head_ref, inputs, etc.) directly in a run: step can lead to script injection.".into(),
                 severity: Severity::High,
                 line: Some(idx + 1),
                 snippet: Some(trimmed.chars().take(120).collect()),
@@ -219,6 +226,30 @@ pub fn scan_rules(path: &Path, content: &str, lines: &[&str]) -> Vec<Finding> {
                 severity: Severity::High,
                 line: Some(idx + 1),
                 snippet: Some(trimmed.chars().take(120).collect()),
+            });
+        }
+
+        if CURL_PIPE_SHELL.is_match(line) {
+            findings.push(Finding {
+                file: path.to_path_buf(),
+                rule_id: "curl-pipe-shell".into(),
+                title: "Remote script piped to a shell".into(),
+                description: "`curl | bash` (or wget) downloads and executes unpinned remote code. Pin a checksum or vendor the script.".into(),
+                severity: Severity::High,
+                line: Some(idx + 1),
+                snippet: Some(trimmed.chars().take(120).collect()),
+            });
+        }
+
+        if IMAGE_LATEST.is_match(line) {
+            findings.push(Finding {
+                file: path.to_path_buf(),
+                rule_id: "image-latest".into(),
+                title: "Container image tagged :latest".into(),
+                description: "`:latest` is a moving tag. Pin the image digest or a version tag so builds stay reproducible and supply-chain safer.".into(),
+                severity: Severity::Medium,
+                line: Some(idx + 1),
+                snippet: Some(trimmed.to_string()),
             });
         }
     }
