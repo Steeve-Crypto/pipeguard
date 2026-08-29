@@ -6,6 +6,7 @@ mod telemetry;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
+use std::process;
 use tracing::{info, info_span};
 
 #[derive(Parser)]
@@ -52,6 +53,14 @@ enum Commands {
         /// Only show findings of this severity or higher
         #[arg(long, value_enum, default_value = "low")]
         min_severity: Severity,
+
+        /// Exit 1 if any finding meets this severity or higher
+        #[arg(long, value_enum)]
+        fail_on: Option<Severity>,
+
+        /// Comma-separated rule IDs to ignore
+        #[arg(long, value_delimiter = ',')]
+        exclude: Vec<String>,
     },
 }
 
@@ -92,6 +101,8 @@ fn main() -> Result<()> {
             json,
             sarif,
             min_severity,
+            fail_on,
+            exclude,
         } => {
             let span = info_span!(
                 "scan.start",
@@ -112,7 +123,18 @@ fn main() -> Result<()> {
 
             let report_span = info_span!("report.generate", findings = findings.len());
             let _rg = report_span.enter();
-            report::print_findings(&findings, json, sarif, min_severity);
+            let shown = report::print_findings(&findings, json, sarif, min_severity, &exclude);
+
+            if let Some(threshold) = fail_on {
+                let should_fail = findings.iter().any(|f| {
+                    f.severity >= threshold
+                        && !exclude.iter().any(|id| id == &f.rule_id)
+                });
+                if should_fail {
+                    process::exit(1);
+                }
+            }
+            let _ = shown;
         }
     }
 

@@ -21,15 +21,17 @@ pub fn print_findings(
     as_json: bool,
     as_sarif: bool,
     min_severity: Severity,
-) {
+    exclude: &[String],
+) -> usize {
     let filtered: Vec<&Finding> = findings
         .iter()
         .filter(|f| f.severity >= min_severity)
+        .filter(|f| !exclude.iter().any(|id| id == &f.rule_id))
         .collect();
 
     if as_sarif {
         print_sarif(&filtered);
-        return;
+        return filtered.len();
     }
 
     if as_json {
@@ -46,7 +48,7 @@ pub fn print_findings(
             })
             .collect();
         println!("{}", serde_json::to_string_pretty(&json_findings).unwrap());
-        return;
+        return filtered.len();
     }
 
     if filtered.is_empty() {
@@ -56,7 +58,7 @@ pub fn print_findings(
                 .green()
                 .bold()
         );
-        return;
+        return 0;
     }
 
     println!(
@@ -65,7 +67,7 @@ pub fn print_findings(
         filtered.len().to_string().bold()
     );
 
-    for f in filtered {
+    for f in &filtered {
         let sev_str = match f.severity {
             Severity::Critical => "CRITICAL".red().bold(),
             Severity::High => "HIGH".red(),
@@ -84,6 +86,8 @@ pub fn print_findings(
         println!("   {}", f.description);
         println!();
     }
+
+    filtered.len()
 }
 
 fn severity_to_sarif_level(sev: &Severity) -> &'static str {
@@ -143,7 +147,7 @@ fn print_sarif(findings: &[&Finding]) {
                 "driver": {
                     "name": "pipeguard",
                     "informationUri": "https://github.com/Steeve-Crypto/pipeguard",
-                    "version": "0.1.0",
+                    "version": "0.1.2",
                     "rules": rules
                 }
             },
