@@ -82,7 +82,39 @@ static CURL_PIPE_SHELL: Lazy<Regex> = Lazy::new(|| {
 });
 
 static IMAGE_LATEST: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#"(?i)^\s*(image|container):\s*.+:latest\b"#).unwrap());
+    Lazy::new(|| Regex::new(r#"(?i)^\s*(image|container|from):\s*.+:latest\b"#).unwrap());
+
+static PRIVILEGED: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"(?i)privileged:\s*true|--privileged\b"#).unwrap());
+
+static INSECURE_SSL: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"(?i)(GIT_SSL_NO_VERIFY|NODE_TLS_REJECT_UNAUTHORIZED\s*=\s*0|--insecure\b|insecure:\s*true)"#)
+        .unwrap()
+});
+
+static WORLD_WRITABLE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"(?i)chmod\s+(-R\s+)?0?777\b"#).unwrap());
+
+pub fn catalog() -> &'static [(&'static str, &'static str, &'static str)] {
+    &[
+        ("unpinned-action", "high", "Actions pinned to tags/branches"),
+        ("permissions-write-all", "high", "permissions: write-all"),
+        ("excessive-write-permissions", "medium", "Too many write scopes"),
+        ("dangerous-permission-combo", "high", "contents write + id-token write"),
+        ("pull-request-target", "critical", "pull_request_target trigger"),
+        ("pr-target-untrusted-checkout", "critical", "PR target + untrusted checkout"),
+        ("persist-credentials", "medium", "Checkout persists GITHUB_TOKEN"),
+        ("env-hardcoded-secret", "high", "Literal secret in env"),
+        ("self-hosted-runner", "medium", "Self-hosted runner"),
+        ("secret-in-logs", "high", "Secret echoed to logs"),
+        ("script-injection", "high", "Untrusted github.event in run"),
+        ("curl-pipe-shell", "high", "curl|wget piped to a shell"),
+        ("image-latest", "medium", "Image or FROM tagged :latest"),
+        ("privileged-container", "high", "Privileged container or --privileged"),
+        ("insecure-ssl", "high", "TLS/SSL verification disabled"),
+        ("world-writable", "medium", "chmod 777 in a pipeline"),
+    ]
+}
 
 pub fn scan_rules(path: &Path, content: &str, lines: &[&str]) -> Vec<Finding> {
     let mut findings = Vec::new();
@@ -247,6 +279,42 @@ pub fn scan_rules(path: &Path, content: &str, lines: &[&str]) -> Vec<Finding> {
                 rule_id: "image-latest".into(),
                 title: "Container image tagged :latest".into(),
                 description: "`:latest` is a moving tag. Pin the image digest or a version tag so builds stay reproducible and supply-chain safer.".into(),
+                severity: Severity::Medium,
+                line: Some(idx + 1),
+                snippet: Some(trimmed.to_string()),
+            });
+        }
+
+        if PRIVILEGED.is_match(line) {
+            findings.push(Finding {
+                file: path.to_path_buf(),
+                rule_id: "privileged-container".into(),
+                title: "Privileged container".into(),
+                description: "Privileged mode disables container isolation. Avoid `--privileged` / `privileged: true` unless there is no alternative.".into(),
+                severity: Severity::High,
+                line: Some(idx + 1),
+                snippet: Some(trimmed.chars().take(120).collect()),
+            });
+        }
+
+        if INSECURE_SSL.is_match(line) {
+            findings.push(Finding {
+                file: path.to_path_buf(),
+                rule_id: "insecure-ssl".into(),
+                title: "TLS verification disabled".into(),
+                description: "Disabling SSL/TLS verification (`--insecure`, GIT_SSL_NO_VERIFY, NODE_TLS_REJECT_UNAUTHORIZED=0) invites MITM on CI traffic.".into(),
+                severity: Severity::High,
+                line: Some(idx + 1),
+                snippet: Some(trimmed.chars().take(120).collect()),
+            });
+        }
+
+        if WORLD_WRITABLE.is_match(line) {
+            findings.push(Finding {
+                file: path.to_path_buf(),
+                rule_id: "world-writable".into(),
+                title: "World-writable permissions".into(),
+                description: "`chmod 777` in CI widens the blast radius if a later step is compromised. Use tighter modes.".into(),
                 severity: Severity::Medium,
                 line: Some(idx + 1),
                 snippet: Some(trimmed.to_string()),
