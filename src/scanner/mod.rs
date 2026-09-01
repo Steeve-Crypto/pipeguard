@@ -32,6 +32,7 @@ pub fn scan(path: &Path) -> Result<Vec<Finding>> {
     } else if path.is_dir() {
         for entry in WalkDir::new(path)
             .into_iter()
+            .filter_entry(|e| !is_skipped_dir(e.path()))
             .filter_map(|e| e.ok())
             .filter(|e| e.file_type().is_file())
         {
@@ -46,10 +47,9 @@ pub fn scan(path: &Path) -> Result<Vec<Finding>> {
         anyhow::bail!("path does not exist: {}", path.display());
     }
 
-    // Sort by severity (Critical first)
-    findings.sort_by(|a, b| b.severity.cmp(&a.severity));
+    dedup(&mut findings);
+    findings.sort_by(|a, b| b.severity.cmp(&a.severity).then_with(|| a.rule_id.cmp(&b.rule_id)));
 
-    // Metrics-style events
     let critical = findings
         .iter()
         .filter(|f| f.severity == Severity::Critical)
@@ -80,6 +80,15 @@ pub fn scan(path: &Path) -> Result<Vec<Finding>> {
     Ok(findings)
 }
 
+fn is_skipped_dir(path: &Path) -> bool {
+    path.components().any(|c| {
+        matches!(
+            c.as_os_str().to_str().unwrap_or(""),
+            ".git" | "target" | "node_modules" | "vendor" | ".venv" | "dist"
+        )
+    })
+}
+
 fn is_pipeline_file(path: &Path) -> bool {
     let name = path
         .file_name()
@@ -89,8 +98,26 @@ fn is_pipeline_file(path: &Path) -> bool {
 
     name.ends_with(".yml")
         || name.ends_with(".yaml")
-        || name == "jenkinsfile"
         || name.ends_with(".toml")
+        || name == "jenkinsfile"
+        || name.starts_with("jenkinsfile.")
+        || name == "dockerfile"
+        || name.starts_with("dockerfile.")
+        || name.ends_with(".dockerfile")
+        || name == ".env"
+        || name.ends_with(".env")
+        || name == "azure-pipelines.yml"
+}
+
+fn dedup(findings: &mut Vec<Finding>) {
+    let mut seen = std::collections::HashSet::new();
+    findings.retain(|f| {
+        seen.insert((
+            f.file.clone(),
+            f.rule_id.clone(),
+            f.line.unwrap_or(0),
+        ))
+    });
 }
 
 #[tracing::instrument(skip(findings), fields(file = %path.display()))]
@@ -104,9 +131,12 @@ fn scan_file(path: &Path, findings: &mut Vec<Finding>) -> Result<()> {
             return Err(e.into());
         }
     };
+    if content.len() > 2_000_000 {
+        warn!(path = %path.display(), "skipping oversized file");
+        return Ok(());
+    }
     let lines: Vec<&str> = content.lines().collect();
 
-    // 1. Secret / credential patterns + entropy
     {
         let _span = info_span!("entropy.analyze", file = %path.display()).entered();
         let secrets = secrets::scan_secrets(path, &content, &lines);
@@ -123,7 +153,6 @@ fn scan_file(path: &Path, findings: &mut Vec<Finding>) -> Result<()> {
         findings.extend(secrets);
     }
 
-    // 2. GitHub Actions / generic pipeline rules
     {
         let _span = info_span!("rule.evaluate", file = %path.display()).entered();
         let rules_findings = rules::scan_rules(path, &content, &lines);

@@ -25,43 +25,30 @@ struct Cli {
 enum Commands {
     /// Convert between JSON, YAML, and TOML
     Convert {
-        /// Input file path
         input: PathBuf,
-
-        /// Output format
         #[arg(short, long, value_enum)]
         to: Format,
-
-        /// Optional output file (defaults to stdout)
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
 
     /// Scan CI/CD pipeline files for security issues
     Scan {
-        /// File or directory to scan (e.g. .github/workflows or a single .yml)
         path: PathBuf,
-
-        /// Output findings as JSON
         #[arg(long)]
         json: bool,
-
-        /// Output findings as SARIF (for GitHub Code Scanning)
         #[arg(long)]
         sarif: bool,
-
-        /// Only show findings of this severity or higher
         #[arg(long, value_enum, default_value = "low")]
         min_severity: Severity,
-
-        /// Exit 1 if any finding meets this severity or higher
         #[arg(long, value_enum)]
         fail_on: Option<Severity>,
-
-        /// Comma-separated rule IDs to ignore
         #[arg(long, value_delimiter = ',')]
         exclude: Vec<String>,
     },
+
+    /// List built-in rule IDs
+    Rules,
 }
 
 #[derive(Clone, ValueEnum, Debug)]
@@ -115,26 +102,25 @@ fn main() -> Result<()> {
             info!("starting scan");
 
             let findings = scanner::scan(&path).context("scan failed")?;
-
-            info!(
-                findings_total = findings.len(),
-                "scan completed"
-            );
+            info!(findings_total = findings.len(), "scan completed");
 
             let report_span = info_span!("report.generate", findings = findings.len());
             let _rg = report_span.enter();
-            let shown = report::print_findings(&findings, json, sarif, min_severity, &exclude);
+            let _shown = report::print_findings(&findings, json, sarif, min_severity, &exclude);
 
             if let Some(threshold) = fail_on {
                 let should_fail = findings.iter().any(|f| {
-                    f.severity >= threshold
-                        && !exclude.iter().any(|id| id == &f.rule_id)
+                    f.severity >= threshold && !exclude.iter().any(|id| id == &f.rule_id)
                 });
                 if should_fail {
                     process::exit(1);
                 }
             }
-            let _ = shown;
+        }
+        Commands::Rules => {
+            for (id, sev, title) in scanner::rules::catalog() {
+                println!("{:<32} {:<10} {}", id, sev, title);
+            }
         }
     }
 
