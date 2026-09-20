@@ -12,7 +12,7 @@ static PATTERNS: Lazy<Vec<(&str, &str, Severity, Regex)>> = Lazy::new(|| {
             "aws-access-key",
             "AWS Access Key ID",
             Severity::Critical,
-            Regex::new(r"(?i)(AKIA[0-9A-Z]{16})").unwrap(),
+            Regex::new(r"AKIA[0-9A-Z]{16}").unwrap(),
         ),
         (
             "aws-secret-key",
@@ -40,6 +40,36 @@ static PATTERNS: Lazy<Vec<(&str, &str, Severity, Regex)>> = Lazy::new(|| {
             Regex::new(r"xox[baprs]-[0-9A-Za-z-]{10,}").unwrap(),
         ),
         (
+            "slack-webhook",
+            "Slack Incoming Webhook",
+            Severity::High,
+            Regex::new(r"https://hooks\.slack\.com/services/T[A-Z0-9]+/B[A-Z0-9]+/[A-Za-z0-9]+").unwrap(),
+        ),
+        (
+            "stripe-key",
+            "Stripe API key",
+            Severity::Critical,
+            Regex::new(r"(?i)sk_live_[0-9a-zA-Z]{16,}").unwrap(),
+        ),
+        (
+            "openai-key",
+            "OpenAI API key",
+            Severity::Critical,
+            Regex::new(r"sk-[A-Za-z0-9]{20,}").unwrap(),
+        ),
+        (
+            "npm-token",
+            "npm access token",
+            Severity::High,
+            Regex::new(r"npm_[A-Za-z0-9]{36,}").unwrap(),
+        ),
+        (
+            "telegram-bot",
+            "Telegram bot token",
+            Severity::High,
+            Regex::new(r"[0-9]{8,10}:AA[A-Za-z0-9_-]{30,}").unwrap(),
+        ),
+        (
             "private-key",
             "Private Key block",
             Severity::Critical,
@@ -63,13 +93,11 @@ static PATTERNS: Lazy<Vec<(&str, &str, Severity, Regex)>> = Lazy::new(|| {
     ]
 });
 
-// Candidate strings that look like secrets (quoted or assigned values)
 static CANDIDATE_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r#"(?i)(?:['\"]([A-Za-z0-9+/=_\-.]{20,})['\"]|(?:=|:)\s*([A-Za-z0-9+/=_\-.]{24,}))"#)
         .unwrap()
 });
 
-/// Shannon entropy of a string
 fn shannon_entropy(s: &str) -> f64 {
     if s.is_empty() {
         return 0.0;
@@ -87,15 +115,20 @@ fn shannon_entropy(s: &str) -> f64 {
         .sum()
 }
 
+fn is_placeholder(s: &str) -> bool {
+    let lower = s.to_ascii_lowercase();
+    ["example", "placeholder", "changeme", "dummy", "fake", "your_", "xxx", "todo", "sample"]
+        .iter()
+        .any(|p| lower.contains(p))
+}
+
 fn looks_like_secret(s: &str) -> bool {
-    // Skip obvious non-secrets
     if s.chars().all(|c| c.is_ascii_digit()) {
-        return false; // pure numbers
-    }
-    if s.contains("example") || s.contains("placeholder") || s.contains("changeme") {
         return false;
     }
-    // High entropy + reasonable length
+    if is_placeholder(s) {
+        return false;
+    }
     let entropy = shannon_entropy(s);
     entropy >= 4.2 && s.len() >= 20
 }
@@ -105,11 +138,13 @@ pub fn scan_secrets(path: &Path, _content: &str, lines: &[&str]) -> Vec<Finding>
 
     for (idx, line) in lines.iter().enumerate() {
         let trimmed = line.trim();
-        if trimmed.starts_with('#') {
+        if trimmed.starts_with('#') || trimmed.contains("pipeguard-ignore") {
+            continue;
+        }
+        if is_placeholder(trimmed) {
             continue;
         }
 
-        // 1. Known pattern matches
         for (id, title, severity, re) in PATTERNS.iter() {
             if re.is_match(line) {
                 findings.push(Finding {
@@ -124,7 +159,6 @@ pub fn scan_secrets(path: &Path, _content: &str, lines: &[&str]) -> Vec<Finding>
             }
         }
 
-        // 2. Entropy-based detection for unknown high-entropy strings
         for caps in CANDIDATE_RE.captures_iter(line) {
             let candidate = caps
                 .get(1)
@@ -133,7 +167,6 @@ pub fn scan_secrets(path: &Path, _content: &str, lines: &[&str]) -> Vec<Finding>
                 .unwrap_or("");
 
             if looks_like_secret(candidate) {
-                // Avoid double-reporting if already matched a known pattern
                 let already_matched = PATTERNS.iter().any(|(_, _, _, re)| re.is_match(line));
                 if !already_matched {
                     findings.push(Finding {

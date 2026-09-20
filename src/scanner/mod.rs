@@ -1,3 +1,4 @@
+pub mod ignore;
 pub mod rules;
 pub mod secrets;
 
@@ -23,12 +24,15 @@ pub struct Finding {
 
 #[tracing::instrument(skip(path), fields(path = %path.display()))]
 pub fn scan(path: &Path) -> Result<Vec<Finding>> {
+    let ignore = ignore::load(path);
     let mut findings = Vec::new();
     let mut files_scanned = 0u64;
 
     if path.is_file() {
-        scan_file(path, &mut findings)?;
-        files_scanned = 1;
+        if !ignore.ignores_path(path) {
+            scan_file(path, &mut findings)?;
+            files_scanned = 1;
+        }
     } else if path.is_dir() {
         for entry in WalkDir::new(path)
             .into_iter()
@@ -37,7 +41,7 @@ pub fn scan(path: &Path) -> Result<Vec<Finding>> {
             .filter(|e| e.file_type().is_file())
         {
             let p = entry.path();
-            if is_pipeline_file(p) {
+            if is_pipeline_file(p) && !ignore.ignores_path(p) {
                 scan_file(p, &mut findings)?;
                 files_scanned += 1;
             }
@@ -47,25 +51,14 @@ pub fn scan(path: &Path) -> Result<Vec<Finding>> {
         anyhow::bail!("path does not exist: {}", path.display());
     }
 
+    findings.retain(|f| !ignore.ignores_rule(&f.rule_id));
     dedup(&mut findings);
     findings.sort_by(|a, b| b.severity.cmp(&a.severity).then_with(|| a.rule_id.cmp(&b.rule_id)));
 
-    let critical = findings
-        .iter()
-        .filter(|f| f.severity == Severity::Critical)
-        .count();
-    let high = findings
-        .iter()
-        .filter(|f| f.severity == Severity::High)
-        .count();
-    let medium = findings
-        .iter()
-        .filter(|f| f.severity == Severity::Medium)
-        .count();
-    let low = findings
-        .iter()
-        .filter(|f| f.severity == Severity::Low)
-        .count();
+    let critical = findings.iter().filter(|f| f.severity == Severity::Critical).count();
+    let high = findings.iter().filter(|f| f.severity == Severity::High).count();
+    let medium = findings.iter().filter(|f| f.severity == Severity::Medium).count();
+    let low = findings.iter().filter(|f| f.severity == Severity::Low).count();
 
     info!(
         files_scanned = files_scanned,
@@ -107,16 +100,15 @@ fn is_pipeline_file(path: &Path) -> bool {
         || name == ".env"
         || name.ends_with(".env")
         || name == "azure-pipelines.yml"
+        || name == "bitbucket-pipelines.yml"
+        || name == "cloudbuild.yaml"
+        || name == "cloudbuild.yml"
 }
 
 fn dedup(findings: &mut Vec<Finding>) {
     let mut seen = std::collections::HashSet::new();
     findings.retain(|f| {
-        seen.insert((
-            f.file.clone(),
-            f.rule_id.clone(),
-            f.line.unwrap_or(0),
-        ))
+        seen.insert((f.file.clone(), f.rule_id.clone(), f.line.unwrap_or(0)))
     });
 }
 
