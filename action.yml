@@ -15,6 +15,14 @@ inputs:
     description: "Minimum severity to report: low | medium | high | critical"
     required: false
     default: "low"
+  fail_on:
+    description: "Exit 1 if findings meet this severity (low|medium|high|critical). Empty = use fail_on_findings."
+    required: false
+    default: ""
+  exclude:
+    description: "Comma-separated rule IDs to ignore"
+    required: false
+    default: ""
   sarif:
     description: "Write SARIF results to this file path (empty = disabled)"
     required: false
@@ -47,13 +55,8 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        # Prefer crates.io binary (fast). Fall back to source build if needed.
-        if cargo install pipeguard --version 0.1.0 --root "$HOME/.local" --force 2>/dev/null; then
-          echo "Installed pipeguard from crates.io"
-        else
-          echo "crates.io install failed, building from source..."
-          cargo install --path "${{ github.action_path }}" --locked --force --root "$HOME/.local"
-        fi
+        # Build the Action checkout so the tag you pin matches the scanner you run.
+        cargo install --path "${{ github.action_path }}" --force --root "$HOME/.local"
         echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
     - name: Run pipeguard scan
@@ -64,6 +67,8 @@ runs:
         PIPEGUARD_MIN: ${{ inputs.min_severity }}
         PIPEGUARD_SARIF: ${{ inputs.sarif }}
         PIPEGUARD_FAIL: ${{ inputs.fail_on_findings }}
+        PIPEGUARD_FAIL_ON: ${{ inputs.fail_on }}
+        PIPEGUARD_EXCLUDE: ${{ inputs.exclude }}
         RUST_LOG: off
       run: |
         set -euo pipefail
@@ -74,21 +79,34 @@ runs:
         fi
 
         ARGS=(scan "$PIPEGUARD_PATH" --min-severity "$PIPEGUARD_MIN")
+        if [[ -n "${PIPEGUARD_EXCLUDE}" ]]; then
+          ARGS+=(--exclude "$PIPEGUARD_EXCLUDE")
+        fi
+        if [[ -n "${PIPEGUARD_FAIL_ON}" ]]; then
+          ARGS+=(--fail-on "$PIPEGUARD_FAIL_ON")
+        fi
+
         FINDINGS=0
 
         if [[ -n "${PIPEGUARD_SARIF}" ]]; then
+          set +e
           pipeguard "${ARGS[@]}" --sarif > "$PIPEGUARD_SARIF"
+          STATUS=$?
+          set -e
           if ! python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$PIPEGUARD_SARIF" 2>/dev/null; then
             echo "Invalid SARIF output written to $PIPEGUARD_SARIF" >&2
             head -c 200 "$PIPEGUARD_SARIF" >&2 || true
             exit 1
           fi
           FINDINGS=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(sum(len(r.get('results',[])) for r in d.get('runs',[])))" "$PIPEGUARD_SARIF")
+          if [[ -n "${PIPEGUARD_FAIL_ON}" && "$STATUS" -ne 0 ]]; then
+            echo "findings_count=$FINDINGS" >> "$GITHUB_OUTPUT"
+            exit "$STATUS"
+          fi
         else
-          # Human output still goes to logs; capture count via JSON side channel
           TMP=$(mktemp)
-          pipeguard "${ARGS[@]}" --json > "$TMP" || true
-          FINDINGS=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(len(d) if isinstance(d,list) else d.get('findings',0) if isinstance(d,dict) else 0)" "$TMP" 2>/dev/null || echo 0)
+          pipeguard scan "$PIPEGUARD_PATH" --min-severity "$PIPEGUARD_MIN" ${PIPEGUARD_EXCLUDE:+--exclude "$PIPEGUARD_EXCLUDE"} --json > "$TMP" || true
+          FINDINGS=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(len(d) if isinstance(d,list) else 0)" "$TMP" 2>/dev/null || echo 0)
           rm -f "$TMP"
           pipeguard "${ARGS[@]}" || true
         fi

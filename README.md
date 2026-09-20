@@ -17,7 +17,7 @@
 
 It does two things extremely well:
 
-1. **Scans** GitHub Actions, GitLab CI, and other pipeline YAML for real security issues
+1. **Scans** GitHub Actions, GitLab CI, Dockerfiles, `.env`, and other pipeline files for real security issues
 2. **Converts** cleanly between YAML ↔ JSON ↔ TOML
 
 Built for practical use during code review, recon, and hardening your own CI.
@@ -28,30 +28,46 @@ Misconfigured CI/CD is one of the highest-ROI attack surfaces. Most teams still 
 
 ## Scanner detections
 
-| Rule ID                      | Severity   | Description                                           |
-|------------------------------|------------|-------------------------------------------------------|
-| `unpinned-action`            | High       | Actions pinned to tags/branches instead of SHAs       |
-| `permissions-write-all`      | High       | `permissions: write-all`                              |
-| `excessive-write-permissions`| Medium     | Too many individual write scopes                      |
-| `dangerous-permission-combo` | High       | `contents: write` + `id-token: write`                 |
-| `pull-request-target`        | Critical   | Dangerous `pull_request_target` trigger               |
-| `pr-target-untrusted-checkout` | Critical | `pull_request_target` + checkout of PR head         |
-| `persist-credentials`        | Medium     | `actions/checkout` leaves GITHUB_TOKEN in workspace   |
-| `env-hardcoded-secret`       | High       | Literal secrets assigned in `env:`                    |
-| `self-hosted-runner`         | Medium     | Use of self-hosted runners                            |
-| `secret-in-logs`             | High       | Secrets being echoed                                  |
-| `script-injection`           | High       | Untrusted `github.event` data used in `run:`          |
-| `aws-access-key`             | Critical   | Hardcoded AWS Access Key                              |
-| `github-pat`                 | Critical   | GitHub Personal Access Tokens                         |
-| `private-key`                | Critical   | Private key blocks                                    |
-| `generic-secret`             | High       | Hardcoded passwords / API keys                        |
-| `high-entropy-secret`        | Medium     | High Shannon entropy string (possible unknown secret) |
+| Rule ID | Severity | Description |
+|---------|----------|-------------|
+| `unpinned-action` | High | Actions pinned to tags/branches instead of SHAs |
+| `permissions-write-all` | High | `permissions: write-all` |
+| `excessive-write-permissions` | Medium | Too many individual write scopes |
+| `dangerous-permission-combo` | High | `contents: write` + `id-token: write` |
+| `pull-request-target` | Critical | Dangerous `pull_request_target` trigger |
+| `pr-target-untrusted-checkout` | Critical | `pull_request_target` + checkout of PR head |
+| `persist-credentials` | Medium | Checkout leaves GITHUB_TOKEN in workspace |
+| `env-hardcoded-secret` | High | Literal secrets assigned in `env:` |
+| `self-hosted-runner` | Medium | Use of self-hosted runners |
+| `secret-in-logs` | High | Secrets being echoed |
+| `script-injection` | High | Untrusted `github.event` data used in `run:` |
+| `curl-pipe-shell` | High | `curl \| bash` / `wget \| sh` |
+| `image-latest` | Medium | Image or `FROM` tagged `:latest` |
+| `privileged-container` | High | Privileged container |
+| `insecure-ssl` | High | TLS verification disabled |
+| `world-writable` | Medium | `chmod 777` |
+| `aws-access-key` / `github-pat` / `stripe-key` / `openai-key` | Critical | Known secret patterns |
+| `high-entropy-secret` | Medium | High Shannon entropy string |
 
 ## Output formats
 
 - Human-readable (colored)
 - JSON
 - SARIF (GitHub Code Scanning ready)
+
+## Ignore noise
+
+Create a `.pipeguardignore` next to the scan root:
+
+```
+# rule IDs
+self-hosted-runner
+
+# path fragments
+examples/
+```
+
+Or suppress one line with `# pipeguard-ignore`.
 
 ## GitHub Action
 
@@ -61,6 +77,7 @@ Misconfigured CI/CD is one of the highest-ROI attack surfaces. Most teams still 
   with:
     path: .github/workflows
     min_severity: medium
+    exclude: self-hosted-runner
     sarif: pipeguard.sarif
     fail_on_findings: "true"
     comment_pr: "true"
@@ -70,39 +87,30 @@ Misconfigured CI/CD is one of the highest-ROI attack surfaces. Most teams still 
     sarif_file: pipeguard.sarif
 ```
 
+The Action builds from the tag you pin, so `@v0.1.0` and later checkouts stay consistent.
+
 ## Installation
 
 ```bash
-# From crates.io
 cargo install pipeguard
-
-# From source
-git clone https://github.com/Steeve-Crypto/pipeguard.git
-cd pipeguard
-cargo install --path .
 ```
 
 ## Usage
 
 ```bash
-# Scan
 pipeguard scan .github/workflows/
-pipeguard scan .github/workflows --min-severity high
-pipeguard scan .github/workflows --json
-pipeguard scan .github/workflows --sarif > results.sarif
+pipeguard scan . --min-severity high --fail-on high
+pipeguard scan . --exclude self-hosted-runner,image-latest
+pipeguard scan . --json
+pipeguard scan . --sarif > results.sarif
+pipeguard rules
 
-# Convert
 pipeguard convert config.yaml --to json
-pipeguard convert data.json --to toml -o data.toml
 ```
 
 ## Observability
 
-Fully instrumented with the `tracing` ecosystem. Structured events for every finding, scan metrics, and JSON log support for collectors.
-
-## OpenSSF Scorecard
-
-This repo runs Scorecard on a schedule. Scorecard covers repository posture; pipeguard covers the actual pipeline content risks. Use both.
+Instrumented with `tracing`. Structured events for every finding, scan metrics, and JSON logs for collectors.
 
 ## License
 

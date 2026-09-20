@@ -61,10 +61,19 @@ pub fn print_findings(
         return 0;
     }
 
+    let critical = filtered.iter().filter(|f| f.severity == Severity::Critical).count();
+    let high = filtered.iter().filter(|f| f.severity == Severity::High).count();
+    let medium = filtered.iter().filter(|f| f.severity == Severity::Medium).count();
+    let low = filtered.iter().filter(|f| f.severity == Severity::Low).count();
+
     println!(
-        "\n{} {} finding(s) found\n",
+        "\n{} {} finding(s)  critical={} high={} medium={} low={}\n",
         "⚠".yellow().bold(),
-        filtered.len().to_string().bold()
+        filtered.len().to_string().bold(),
+        critical,
+        high,
+        medium,
+        low
     );
 
     for f in &filtered {
@@ -103,9 +112,8 @@ fn print_sarif(findings: &[&Finding]) {
     let mut rules_map = std::collections::HashMap::new();
 
     for f in findings {
-        rules_map
-            .entry(f.rule_id.clone())
-            .or_insert_with(|| json!({
+        rules_map.entry(f.rule_id.clone()).or_insert_with(|| {
+            json!({
                 "id": f.rule_id,
                 "name": f.title,
                 "shortDescription": { "text": f.title },
@@ -113,7 +121,8 @@ fn print_sarif(findings: &[&Finding]) {
                 "defaultConfiguration": {
                     "level": severity_to_sarif_level(&f.severity)
                 }
-            }));
+            })
+        });
 
         let mut result = json!({
             "ruleId": f.rule_id,
@@ -147,7 +156,7 @@ fn print_sarif(findings: &[&Finding]) {
                 "driver": {
                     "name": "pipeguard",
                     "informationUri": "https://github.com/Steeve-Crypto/pipeguard",
-                    "version": "0.1.2",
+                    "version": "0.1.4",
                     "rules": rules
                 }
             },

@@ -1,0 +1,3 @@
+# Example ignore file. Rule IDs or path fragments, one per line.
+# self-hosted-runner
+examples/
