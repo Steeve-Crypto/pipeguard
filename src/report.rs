@@ -20,6 +20,7 @@ pub fn print_findings(
     findings: &[Finding],
     as_json: bool,
     as_sarif: bool,
+    quiet: bool,
     min_severity: Severity,
     exclude: &[String],
 ) -> usize {
@@ -48,6 +49,11 @@ pub fn print_findings(
             })
             .collect();
         println!("{}", serde_json::to_string_pretty(&json_findings).unwrap());
+        return filtered.len();
+    }
+
+    if quiet {
+        println!("{}", filtered.len());
         return filtered.len();
     }
 
@@ -156,7 +162,7 @@ fn print_sarif(findings: &[&Finding]) {
                 "driver": {
                     "name": "pipeguard",
                     "informationUri": "https://github.com/Steeve-Crypto/pipeguard",
-                    "version": "0.1.4",
+                    "version": "0.1.5",
                     "rules": rules
                 }
             },
