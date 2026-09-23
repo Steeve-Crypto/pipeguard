@@ -39,6 +39,9 @@ enum Commands {
         json: bool,
         #[arg(long)]
         sarif: bool,
+        /// Print only the finding count
+        #[arg(long, short)]
+        quiet: bool,
         #[arg(long, value_enum, default_value = "low")]
         min_severity: Severity,
         #[arg(long, value_enum)]
@@ -87,6 +90,7 @@ fn main() -> Result<()> {
             path,
             json,
             sarif,
+            quiet,
             min_severity,
             fail_on,
             exclude,
@@ -106,7 +110,14 @@ fn main() -> Result<()> {
 
             let report_span = info_span!("report.generate", findings = findings.len());
             let _rg = report_span.enter();
-            let _shown = report::print_findings(&findings, json, sarif, min_severity, &exclude);
+            let shown = report::print_findings(
+                &findings,
+                json,
+                sarif,
+                quiet,
+                min_severity,
+                &exclude,
+            );
 
             if let Some(threshold) = fail_on {
                 let should_fail = findings.iter().any(|f| {
@@ -116,6 +127,7 @@ fn main() -> Result<()> {
                     process::exit(1);
                 }
             }
+            let _ = shown;
         }
         Commands::Rules => {
             for (id, sev, title) in scanner::rules::catalog() {

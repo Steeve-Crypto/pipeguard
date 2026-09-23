@@ -1,6 +1,6 @@
 [package]
 name = "pipeguard"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2021"
 authors = ["Steeve-Crypto"]
 description = "CI/CD pipeline security scanner and multi-format config converter (YAML ↔ JSON ↔ TOML)"

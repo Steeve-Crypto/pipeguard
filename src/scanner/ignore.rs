@@ -46,6 +46,10 @@ fn parse(path: &PathBuf) -> IgnoreSet {
     let Ok(text) = fs::read_to_string(path) else {
         return IgnoreSet::default();
     };
+    parse_text(&text)
+}
+
+pub fn parse_text(text: &str) -> IgnoreSet {
     let mut set = IgnoreSet::default();
     for raw in text.lines() {
         let line = raw.trim();
@@ -59,4 +63,25 @@ fn parse(path: &PathBuf) -> IgnoreSet {
         }
     }
     set
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn parses_rules_and_paths() {
+        let set = parse_text("# comment\nself-hosted-runner\nexamples/\n*.lock\n");
+        assert!(set.ignores_rule("self-hosted-runner"));
+        assert!(!set.ignores_rule("unpinned-action"));
+        assert!(set.ignores_path(Path::new("repo/examples/bad-workflow.yml")));
+    }
+
+    #[test]
+    fn empty_text_is_noop() {
+        let set = parse_text("");
+        assert!(set.rules.is_empty());
+        assert!(set.path_prefixes.is_empty());
+    }
 }
