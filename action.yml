@@ -51,13 +51,22 @@ outputs:
 runs:
   using: composite
   steps:
+    - name: Ensure Rust
+      shell: bash
+      run: |
+        set -euo pipefail
+        if ! command -v cargo >/dev/null 2>&1; then
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+        fi
+        echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
     - name: Install pipeguard
       shell: bash
       run: |
         set -euo pipefail
-        # Build the Action checkout so the tag you pin matches the scanner you run.
+        export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH"
         cargo install --path "${{ github.action_path }}" --force --root "$HOME/.local"
-        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
     - name: Run pipeguard scan
       id: scan
@@ -72,6 +81,7 @@ runs:
         RUST_LOG: off
       run: |
         set -euo pipefail
+        export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH"
 
         if [[ ! -x "$HOME/.local/bin/pipeguard" ]]; then
           echo "pipeguard binary not found" >&2
@@ -99,8 +109,9 @@ runs:
             exit 1
           fi
           FINDINGS=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(sum(len(r.get('results',[])) for r in d.get('runs',[])))" "$PIPEGUARD_SARIF")
+          echo "findings_count=$FINDINGS" >> "$GITHUB_OUTPUT"
+          echo "pipeguard: $FINDINGS finding(s)"
           if [[ -n "${PIPEGUARD_FAIL_ON}" && "$STATUS" -ne 0 ]]; then
-            echo "findings_count=$FINDINGS" >> "$GITHUB_OUTPUT"
             exit "$STATUS"
           fi
         else
@@ -109,10 +120,9 @@ runs:
           FINDINGS=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(len(d) if isinstance(d,list) else 0)" "$TMP" 2>/dev/null || echo 0)
           rm -f "$TMP"
           pipeguard "${ARGS[@]}" || true
+          echo "findings_count=$FINDINGS" >> "$GITHUB_OUTPUT"
+          echo "pipeguard: $FINDINGS finding(s)"
         fi
-
-        echo "findings_count=$FINDINGS" >> "$GITHUB_OUTPUT"
-        echo "pipeguard: $FINDINGS finding(s)"
 
         if [[ "$PIPEGUARD_FAIL" == "true" && "$FINDINGS" -gt 0 ]]; then
           echo "pipeguard: failing because findings were reported (fail_on_findings=true)" >&2
