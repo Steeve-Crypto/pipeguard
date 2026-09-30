@@ -1,41 +1,41 @@
-2026-09-30T15:08:25.028939Z  INFO scan.start: starting scan path=/tmp/pg-demo/bad.yml min_severity=Low json=false sarif=false
-2026-09-30T15:08:25.036312Z  INFO scan.start:scan:scan_file:rule.evaluate: finding.detected rule_id=pull-request-target severity=Critical line=Some(2) title=Dangerous trigger: pull_request_target path=/tmp/pg-demo/bad.yml min_severity=Low json=false sarif=false path=/tmp/pg-demo/bad.yml path="/tmp/pg-demo/bad.yml" file=/tmp/pg-demo/bad.yml file=/tmp/pg-demo/bad.yml
-2026-09-30T15:08:25.036329Z  INFO scan.start:scan:scan_file:rule.evaluate: finding.detected rule_id=permissions-write-all severity=High line=Some(3) title=Overly broad permissions (write-all) path=/tmp/pg-demo/bad.yml min_severity=Low json=false sarif=false path=/tmp/pg-demo/bad.yml path="/tmp/pg-demo/bad.yml" file=/tmp/pg-demo/bad.yml file=/tmp/pg-demo/bad.yml
-2026-09-30T15:08:25.036331Z  INFO scan.start:scan:scan_file:rule.evaluate: finding.detected rule_id=unpinned-action severity=High line=Some(8) title=Unpinned GitHub Action path=/tmp/pg-demo/bad.yml min_severity=Low json=false sarif=false path=/tmp/pg-demo/bad.yml path="/tmp/pg-demo/bad.yml" file=/tmp/pg-demo/bad.yml file=/tmp/pg-demo/bad.yml
-2026-09-30T15:08:25.036333Z  INFO scan.start:scan:scan_file:rule.evaluate: finding.detected rule_id=curl-pipe-shell severity=High line=Some(9) title=Remote script piped to a shell path=/tmp/pg-demo/bad.yml min_severity=Low json=false sarif=false path=/tmp/pg-demo/bad.yml path="/tmp/pg-demo/bad.yml" file=/tmp/pg-demo/bad.yml file=/tmp/pg-demo/bad.yml
-2026-09-30T15:08:25.036335Z  INFO scan.start:scan:scan_file:rule.evaluate: finding.detected rule_id=secret-in-logs severity=High line=Some(10) title=Possible secret echoed to logs path=/tmp/pg-demo/bad.yml min_severity=Low json=false sarif=false path=/tmp/pg-demo/bad.yml path="/tmp/pg-demo/bad.yml" file=/tmp/pg-demo/bad.yml file=/tmp/pg-demo/bad.yml
-2026-09-30T15:08:25.036345Z  INFO scan.start:scan: scan metrics files_scanned=1 findings_total=5 findings_critical=1 findings_high=4 findings_medium=0 findings_low=0 path=/tmp/pg-demo/bad.yml min_severity=Low json=false sarif=false path=/tmp/pg-demo/bad.yml
-2026-09-30T15:08:25.036348Z  INFO scan.start: scan completed findings_total=5 path=/tmp/pg-demo/bad.yml min_severity=Low json=false sarif=false
+2026-09-30T15:09:55.767030Z  INFO scan.start: starting scan path=docs/demo/demo.yml min_severity=Low json=false sarif=false
+2026-09-30T15:09:55.773585Z  INFO scan.start:scan:scan_file:rule.evaluate: finding.detected rule_id=pull-request-target severity=Critical line=Some(3) title=Dangerous trigger: pull_request_target path=docs/demo/demo.yml min_severity=Low json=false sarif=false path=docs/demo/demo.yml path="docs/demo/demo.yml" file=docs/demo/demo.yml file=docs/demo/demo.yml
+2026-09-30T15:09:55.773609Z  INFO scan.start:scan:scan_file:rule.evaluate: finding.detected rule_id=permissions-write-all severity=High line=Some(4) title=Overly broad permissions (write-all) path=docs/demo/demo.yml min_severity=Low json=false sarif=false path=docs/demo/demo.yml path="docs/demo/demo.yml" file=docs/demo/demo.yml file=docs/demo/demo.yml
+2026-09-30T15:09:55.773613Z  INFO scan.start:scan:scan_file:rule.evaluate: finding.detected rule_id=unpinned-action severity=High line=Some(9) title=Unpinned GitHub Action path=docs/demo/demo.yml min_severity=Low json=false sarif=false path=docs/demo/demo.yml path="docs/demo/demo.yml" file=docs/demo/demo.yml file=docs/demo/demo.yml
+2026-09-30T15:09:55.773615Z  INFO scan.start:scan:scan_file:rule.evaluate: finding.detected rule_id=curl-pipe-shell severity=High line=Some(10) title=Remote script piped to a shell path=docs/demo/demo.yml min_severity=Low json=false sarif=false path=docs/demo/demo.yml path="docs/demo/demo.yml" file=docs/demo/demo.yml file=docs/demo/demo.yml
+2026-09-30T15:09:55.773618Z  INFO scan.start:scan:scan_file:rule.evaluate: finding.detected rule_id=secret-in-logs severity=High line=Some(11) title=Possible secret echoed to logs path=docs/demo/demo.yml min_severity=Low json=false sarif=false path=docs/demo/demo.yml path="docs/demo/demo.yml" file=docs/demo/demo.yml file=docs/demo/demo.yml
+2026-09-30T15:09:55.773640Z  INFO scan.start:scan: scan metrics files_scanned=1 findings_total=5 findings_critical=1 findings_high=4 findings_medium=0 findings_low=0 path=docs/demo/demo.yml min_severity=Low json=false sarif=false path=docs/demo/demo.yml
+2026-09-30T15:09:55.773646Z  INFO scan.start: scan completed findings_total=5 path=docs/demo/demo.yml min_severity=Low json=false sarif=false
 
 ⚠ 5 finding(s)  critical=1 high=4 medium=0 low=0
 
 CRITICAL [pull-request-target] Dangerous trigger: pull_request_target
-   File : /tmp/pg-demo/bad.yml
-   Line : 2
+   File : docs/demo/demo.yml
+   Line : 3
    Code : on: pull_request_target
    `pull_request_target` runs in the context of the base repository and can be exploited by malicious PRs to steal secrets or modify the repo.
 
 HIGH [curl-pipe-shell] Remote script piped to a shell
-   File : /tmp/pg-demo/bad.yml
-   Line : 9
+   File : docs/demo/demo.yml
+   Line : 10
    Code : - run: curl https://example.com/install.sh | bash
    `curl | bash` (or wget) downloads and executes unpinned remote code. Pin a checksum or vendor the script.
 
 HIGH [permissions-write-all] Overly broad permissions (write-all)
-   File : /tmp/pg-demo/bad.yml
-   Line : 3
+   File : docs/demo/demo.yml
+   Line : 4
    Code : permissions: write-all
    `permissions: write-all` grants the GITHUB_TOKEN maximum privileges. Prefer least-privilege explicit permissions.
 
 HIGH [secret-in-logs] Possible secret echoed to logs
-   File : /tmp/pg-demo/bad.yml
-   Line : 10
+   File : docs/demo/demo.yml
+   Line : 11
    Code : - run: echo ${{ secrets.TOKEN }}
    Secrets should never be printed. Even if masked, this is a bad practice and can leak in some runners.
 
 HIGH [unpinned-action] Unpinned GitHub Action
-   File : /tmp/pg-demo/bad.yml
-   Line : 8
+   File : docs/demo/demo.yml
+   Line : 9
    Code : - uses: actions/checkout@v4
    Action is referenced by mutable ref `v4` instead of a full commit SHA. This enables supply-chain attacks if the tag/branch is moved.
 
