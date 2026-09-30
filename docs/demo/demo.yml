@@ -1,0 +1,13 @@
+# Intentional insecure fixture for README demo screenshots only.
+name: demo-insecure
+on: pull_request_target
+permissions: write-all
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: curl https://example.com/install.sh | bash
+      - run: echo ${{ secrets.TOKEN }}
+        env:
+          AWS_KEY: AKIAIOSFODNN7EXAMPLE

@@ -112,6 +112,19 @@ pipeguard convert config.yaml --to json
 
 Instrumented with `tracing`. Structured events for every finding, scan metrics, and JSON logs for collectors.
 
+
+## Demo
+
+Live scan of an intentional insecure workflow fixture (`docs/demo/demo.yml`):
+
+![pipeguard scan demo](docs/demo/scan-demo.png)
+
+```bash
+pipeguard scan docs/demo/demo.yml
+```
+
+Findings shown: `pull_request_target`, `permissions: write-all`, unpinned action, `curl | bash`, secret echo.
+
 ## License
 
 MIT
