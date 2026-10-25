@@ -21,16 +21,17 @@ jobs:
   pipeguard:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Scan CI/CD configs
-        uses: Steeve-Crypto/pipeguard@v0.1.0
+        uses: Steeve-Crypto/pipeguard@v0.1.6
         with:
           path: .github/workflows
           min_severity: medium
+          exclude: self-hosted-runner
           sarif: pipeguard.sarif
           fail_on_findings: "true"
-          comment_pr: "true"          # optional
+          comment_pr: "true"
 
       - name: Upload to Code Scanning
         if: always()
@@ -45,6 +46,8 @@ jobs:
 |-------|---------|-------------|
 | `path` | `.github/workflows` | File or directory to scan |
 | `min_severity` | `low` | `low` \| `medium` \| `high` \| `critical` |
+| `fail_on` | empty | Exit 1 if any finding meets this severity |
+| `exclude` | empty | Comma-separated rule IDs to ignore |
 | `sarif` | `pipeguard.sarif` | SARIF output path (empty to skip) |
 | `fail_on_findings` | `true` | Fail the job when findings exist |
 | `comment_pr` | `false` | Post a summary comment on the PR |
@@ -59,6 +62,7 @@ jobs:
 
 ## Notes
 
-- The Action prefers the published crates.io binary (fast). Falls back to building from source only if needed.
-- Pin to a release tag in production: `Steeve-Crypto/pipeguard@v0.1.0`.
+- The Action installs Rust if missing, then builds from the tag you pin.
+- Pin to a release tag in production: `Steeve-Crypto/pipeguard@v0.1.6`.
+- A `pipeguard.toml` in the scanned tree is honored; Action inputs override it.
 - Pair with [OSSF Scorecard](scorecard.md) for repo-level posture + pipeline content checks.
