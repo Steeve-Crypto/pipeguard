@@ -204,7 +204,7 @@ mod tests {
 
     #[test]
     fn detects_aws_and_github_pat() {
-        let found = ids("AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE\ngh_token: ghp_abcdefghijklmnopqrstuvwxyz1234567890abcd\n");
+        let found = ids("AWS_ACCESS_KEY_ID=AKIAIOSFODNN7REALKEY\ngh_token: ghp_abcdefghijklmnopqrstuvwxyz1234567890abcd\n");
         assert!(found.iter().any(|r| r == "aws-access-key"));
         assert!(found.iter().any(|r| r == "github-pat"));
     }
