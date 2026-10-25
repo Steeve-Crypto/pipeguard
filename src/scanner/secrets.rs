@@ -188,3 +188,36 @@ pub fn scan_secrets(path: &Path, _content: &str, lines: &[&str]) -> Vec<Finding>
 
     findings
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    fn ids(content: &str) -> Vec<String> {
+        let lines: Vec<&str> = content.lines().collect();
+        scan_secrets(Path::new("secrets.yml"), content, &lines)
+            .into_iter()
+            .map(|f| f.rule_id)
+            .collect()
+    }
+
+    #[test]
+    fn detects_aws_and_github_pat() {
+        let found = ids("AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE\ngh_token: ghp_abcdefghijklmnopqrstuvwxyz1234567890abcd\n");
+        assert!(found.iter().any(|r| r == "aws-access-key"));
+        assert!(found.iter().any(|r| r == "github-pat"));
+    }
+
+    #[test]
+    fn skips_placeholder() {
+        let found = ids("password: \"changeme-example\"\n");
+        assert!(found.is_empty());
+    }
+
+    #[test]
+    fn detects_private_key_header() {
+        let found = ids("-----BEGIN RSA PRIVATE KEY-----\n");
+        assert!(found.iter().any(|r| r == "private-key"));
+    }
+}

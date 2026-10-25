@@ -1,0 +1,4 @@
+# pipeguard config — optional. CLI flags override these values.
+min_severity = "medium"
+# fail_on = "high"
+exclude = []

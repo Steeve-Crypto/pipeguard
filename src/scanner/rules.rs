@@ -366,3 +366,49 @@ pub fn scan_rules(path: &Path, content: &str, lines: &[&str]) -> Vec<Finding> {
 
     findings
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    fn ids(content: &str) -> Vec<String> {
+        let lines: Vec<&str> = content.lines().collect();
+        scan_rules(Path::new("test.yml"), content, &lines)
+            .into_iter()
+            .map(|f| f.rule_id)
+            .collect()
+    }
+
+    #[test]
+    fn detects_unpinned_action() {
+        let found = ids("      - uses: actions/checkout@v4\n");
+        assert!(found.iter().any(|r| r == "unpinned-action"));
+    }
+
+    #[test]
+    fn ignores_sha_pinned_action() {
+        let found = ids("      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683\n");
+        assert!(!found.iter().any(|r| r == "unpinned-action"));
+    }
+
+    #[test]
+    fn detects_write_all_and_pr_target() {
+        let found = ids("permissions: write-all\non:\n  pull_request_target:\n");
+        assert!(found.iter().any(|r| r == "permissions-write-all"));
+        assert!(found.iter().any(|r| r == "pull-request-target"));
+    }
+
+    #[test]
+    fn detects_curl_pipe_and_latest() {
+        let found = ids("run: curl https://example.com/install.sh | bash\nimage: ubuntu:latest\n");
+        assert!(found.iter().any(|r| r == "curl-pipe-shell"));
+        assert!(found.iter().any(|r| r == "image-latest"));
+    }
+
+    #[test]
+    fn detects_script_injection() {
+        let found = ids("run: echo ${{ github.event.pull_request.title }}\n");
+        assert!(found.iter().any(|r| r == "script-injection"));
+    }
+}

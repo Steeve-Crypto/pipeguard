@@ -1,3 +1,4 @@
+mod config;
 mod convert;
 mod report;
 mod scanner;
@@ -42,8 +43,8 @@ enum Commands {
         /// Print only the finding count
         #[arg(long, short)]
         quiet: bool,
-        #[arg(long, value_enum, default_value = "low")]
-        min_severity: Severity,
+        #[arg(long, value_enum)]
+        min_severity: Option<Severity>,
         #[arg(long, value_enum)]
         fail_on: Option<Severity>,
         #[arg(long, value_delimiter = ',')]
@@ -95,6 +96,19 @@ fn main() -> Result<()> {
             fail_on,
             exclude,
         } => {
+            let cfg = config::load(&path).context("failed to load pipeguard.toml")?;
+
+            let min_severity = min_severity
+                .or_else(|| cfg.min_severity())
+                .unwrap_or(Severity::Low);
+            let fail_on = fail_on.or_else(|| cfg.fail_on());
+            let mut exclude = exclude;
+            for id in cfg.exclude {
+                if !exclude.iter().any(|e| e == &id) {
+                    exclude.push(id);
+                }
+            }
+
             let span = info_span!(
                 "scan.start",
                 path = %path.display(),
