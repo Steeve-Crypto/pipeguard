@@ -55,6 +55,16 @@ Misconfigured CI/CD is one of the highest-ROI attack surfaces. Most teams still 
 - JSON
 - SARIF (GitHub Code Scanning ready)
 
+## Configuration
+
+Drop a `pipeguard.toml` at the scan root (or a parent directory). CLI flags override it.
+
+```toml
+min_severity = "medium"
+fail_on = "high"
+exclude = ["self-hosted-runner"]
+```
+
 ## Ignore noise
 
 Create a `.pipeguardignore` next to the scan root:
@@ -72,8 +82,8 @@ Or suppress one line with `# pipeguard-ignore`.
 ## GitHub Action
 
 ```yaml
-- uses: actions/checkout@v4
-- uses: Steeve-Crypto/pipeguard@v0.1.0
+- uses: actions/checkout@v5
+- uses: Steeve-Crypto/pipeguard@v0.1.6
   with:
     path: .github/workflows
     min_severity: medium
@@ -87,7 +97,7 @@ Or suppress one line with `# pipeguard-ignore`.
     sarif_file: pipeguard.sarif
 ```
 
-The Action builds from the tag you pin, so `@v0.1.0` and later checkouts stay consistent.
+Pin the Action to a release tag. See [docs/github-action.md](docs/github-action.md).
 
 ## Installation
 
@@ -101,6 +111,7 @@ cargo install pipeguard
 pipeguard scan .github/workflows/
 pipeguard scan . --min-severity high --fail-on high
 pipeguard scan . --exclude self-hosted-runner,image-latest
+pipeguard scan . --quiet
 pipeguard scan . --json
 pipeguard scan . --sarif > results.sarif
 pipeguard rules
@@ -111,7 +122,6 @@ pipeguard convert config.yaml --to json
 ## Observability
 
 Instrumented with `tracing`. Structured events for every finding, scan metrics, and JSON logs for collectors.
-
 
 ## Demo
 
